@@ -282,10 +282,10 @@ pub fn MapTarget_EnumerateTrade(this: &MapTarget, _method_info: OptionalMethod) 
       let x: i32 = this.x.into();
       let z: i32 = this.z.into();
 
-      let x_1 = clamp(x - 1, mapImage_instance.playarea_x1, mapImage_instance.playarea_x2);
-      let z_1 = clamp(z - 1, mapImage_instance.playarea_z1, mapImage_instance.playarea_z2);
-      let x_2 = clamp(x + 1, mapImage_instance.playarea_x1, mapImage_instance.playarea_x2);
-      let z_2 = clamp(z + 1, mapImage_instance.playarea_z1, mapImage_instance.playarea_z2);
+      let x_1 = (x - 1).clamp(mapImage_instance.playarea_x1, mapImage_instance.playarea_x2);
+      let z_1 = (z - 1).clamp(mapImage_instance.playarea_z1, mapImage_instance.playarea_z2);
+      let x_2 = (x + 1).clamp(mapImage_instance.playarea_x1, mapImage_instance.playarea_x2);
+      let z_2 = (z + 1).clamp(mapImage_instance.playarea_z1, mapImage_instance.playarea_z2);
       local_c0.m_max_z = z_2;
       local_c0.m_current.z = local_c0.m_max_z;
       local_c0.m_current.x = x_1 - 1;
