@@ -1,0 +1,22 @@
+[package]
+name = "stealcommand"
+version = "0.1.0"
+edition = "2021"
+
+[package.metadata.skyline]
+titleid = "0100A6301214E000" # Fire Emblem Engage
+
+[lib]
+crate-type = ["cdylib"]
+
+[dependencies]
+skyline = { git = "https://github.com/ultimate-research/skyline-rs" }
+unity = { version = "0.3.0", git = "https://github.com/DivineDragonFanClub/unity" }
+engage = { version = "0.7.0", git = "https://github.com/DivineDragonFanClub/engage" }
+
+[profile.dev]
+panic = "abort"
+
+[profile.release]
+panic = "abort"
+lto = true
