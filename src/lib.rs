@@ -1,6 +1,4 @@
-#![feature(lazy_cell, ptr_sub_ptr)]
-use std::cmp::Ordering;
-
+#![feature(ptr_sub_ptr)]
 use engage::menu::*;
 
 use std::sync::OnceLock;
@@ -8,7 +6,6 @@ use std::sync::OnceLock;
 use unity::{prelude::*, system::List};
 
 mod enume;
-use enume::*;
 
 #[unity::class("App", "MapUnitCommandMenu")]
 pub struct MapUnitCommandMenu {
@@ -21,7 +18,7 @@ pub struct TradeMenuItem {
     base: BasicMenuItemFields
 }
 
-static steal_class: OnceLock<&'static mut Il2CppClass> = OnceLock::new();
+static STEAL_CLASS: OnceLock<&'static mut Il2CppClass> = OnceLock::new();
 
 pub trait StealMenuItemMethods {
     extern "C" fn get_name(_this: &mut TradeMenuItem, _method_info: OptionalMethod) -> &'static Il2CppString {
@@ -31,8 +28,8 @@ pub trait StealMenuItemMethods {
 }
 
 #[unity::hook("App", "MapBasicMenu", ".ctor")]
-pub fn MapBasicMenu_ctor(this: &(), menuItemList: &mut List<TradeMenuItem>, menucontent: &BasicMenuContent, _method_info: OptionalMethod) {
-    let steal = steal_class.get_or_init(|| {
+pub fn MapBasicMenu_ctor(this: &(), menu_item_list: &mut List<TradeMenuItem>, menucontent: &BasicMenuContent, _method_info: OptionalMethod) {
+    let steal = STEAL_CLASS.get_or_init(|| {
         let menu_class  = *MapUnitCommandMenu::class()
             .get_nested_types()
             .iter()
@@ -61,20 +58,20 @@ pub fn MapBasicMenu_ctor(this: &(), menuItemList: &mut List<TradeMenuItem>, menu
 
     let instance = Il2CppObject::<TradeMenuItem>::from_class(steal).unwrap();
 
-    menuItemList.add(instance);
+    menu_item_list.add(instance);
 
-    call_original!(this, menuItemList, menucontent, _method_info);
+    call_original!(this, menu_item_list, menucontent, _method_info);
 }
 
-pub extern "C" fn steal_get_name(this: &(), method_info: OptionalMethod) -> &'static Il2CppString {
+pub extern "C" fn steal_get_name(_this: &(), _method_info: OptionalMethod) -> &'static Il2CppString {
     "Steal".into()
 }
 
-pub extern "C" fn steal_get_desc(this: &(), method_info: OptionalMethod) -> &'static Il2CppString {
+pub extern "C" fn steal_get_desc(_this: &(), _method_info: OptionalMethod) -> &'static Il2CppString {
     "Take an item from an enemy.".into()
 }
 
-pub extern "C" fn steal_get_mind(this: &(), method_info: OptionalMethod) -> i32 {
+pub extern "C" fn steal_get_mind(_this: &(), _method_info: OptionalMethod) -> i32 {
     2
 }
 
