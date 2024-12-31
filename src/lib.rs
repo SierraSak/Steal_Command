@@ -72,7 +72,7 @@ pub extern "C" fn steal_get_desc(_this: &(), _method_info: OptionalMethod) -> &'
 }
 
 pub extern "C" fn steal_get_mind(_this: &(), _method_info: OptionalMethod) -> i32 {
-    2
+    0xf
 }
 
 
