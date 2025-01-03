@@ -20,11 +20,38 @@ pub struct TradeMenuItem {
 
 static STEAL_CLASS: OnceLock<&'static mut Il2CppClass> = OnceLock::new();
 
-pub trait StealMenuItemMethods {
-    extern "C" fn get_name(_this: &mut TradeMenuItem, _method_info: OptionalMethod) -> &'static Il2CppString {
-        "Steal".into()
+#[unity::hook("App", "MapTarget", "Enumerate")]
+pub fn MapTarget_Enumerate(this: &mut enume::MapTarget, mask: i32, _method_info: OptionalMethod) {
+    if this.m_mind < 0x37 {
+        call_original!(this, mask, _method_info);
     }
-    
+    else {
+        this.m_action_mask = mask as u32;
+
+        if this.unit.is_some() {
+            if this.x < 0 {
+                this.x = this.unit.unwrap().x as i8;
+            }
+            if this.z < 0 {
+                this.z = this.unit.unwrap().z as i8;
+            }
+            if this.m_dataset.is_some() {
+                this.m_dataset.as_mut().unwrap().clear();
+            }
+            this.enumerate_steal();
+            let mut countVar = 0;
+            
+            this.m_dataset.as_mut().unwrap().m_list
+                .iter_mut()
+                .for_each(|data_item| {
+                    data_item.m_index = countVar;
+                    countVar = countVar + 1;
+                    
+                });
+        }
+        return;
+    }
+
 }
 
 #[unity::hook("App", "MapBasicMenu", ".ctor")]
@@ -72,7 +99,7 @@ pub extern "C" fn steal_get_desc(_this: &(), _method_info: OptionalMethod) -> &'
 }
 
 pub extern "C" fn steal_get_mind(_this: &(), _method_info: OptionalMethod) -> i32 {
-    0xf
+    0x37
 }
 
 
@@ -114,6 +141,7 @@ pub fn main() {
     }));
 
     skyline::install_hooks!(
-        MapBasicMenu_ctor
+        MapBasicMenu_ctor,
+        MapTarget_Enumerate,
     );
 }
