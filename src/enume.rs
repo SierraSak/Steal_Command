@@ -248,6 +248,24 @@ impl<T> Stack<T> {
     }
 }
 
+
+// What the fuck Sierra, these aren't hooks
+
+// #[unity::hook("App", "unititemlist", "getitem")]
+// pub fn UnitItemList_GetItem(this: &UnitItemList, index: i32, _method_info: OptionalMethod) -> &UnitItem{
+//   call_original!(this, index, _method_info)
+// }
+
+// #[unity::hook("App", "MapEnum.RangeEnumerator", "GetEnumerator")]
+// pub fn RangeEnumerator_GetEnumerator(ret_storage: &RangeEnumerator, this: &RangeEnumerator, _method_info: OptionalMethod) -> &'static RangeEnumerator{
+//   call_original!(ret_storage, this, _method_info)
+// }
+
+// #[unity::hook("App", "MapImage", "GetTargetUnit")]
+// pub fn MapImage_GetTargetUnit(this: &MapImage, x: i32, z: i32, _method_info: OptionalMethod) -> &Unit{
+//   call_original!(this, x, z, _method_info)
+// }
+
 // Resume sane code here
 
 impl MapTarget {
@@ -259,25 +277,28 @@ impl MapTarget {
     // let local_f0 = RangeEnumerator::default();
   
     if self.unit.is_none() {
-      //println!("self.unit = None");
+      println!("self.unit = None");
       return;
     }
-    //else {
-      //println!("self.unit = {}", self.unit.unwrap().person.unit_icon_id.unwrap());
-    //}
+    else {
+      println!("self.unit = {}", self.unit.unwrap().person.unit_icon_id.unwrap());
+    }
     let cur_unit = self.unit.unwrap();
   
     if cur_unit.status.value & 0x10000 != 0{
+      println!("self.unit's Status is funky");
       return;
     }
   
     if (cur_unit.extra_hp_stock_count + cur_unit.hp_stock_count == 0) && (cur_unit.hp_value == 0) {
+      println!("self.unit's HP is funky");
       return;
     }
   
     let mut mapimage_instance = get_instance::<MapImage>();
   
     if ((mapimage_instance.playarea_z2 - cur_unit.z as i32) * (cur_unit.z as i32 - mapimage_instance.playarea_z1)) | ((mapimage_instance.playarea_x2 - cur_unit.x as i32) * (cur_unit.x as i32 - mapimage_instance.playarea_x1)) < 0 {
+      println!("PlayArea for self.unit is funky");
       return;
     }
   
@@ -291,10 +312,17 @@ impl MapTarget {
           )
       };
   
+    println!("cur_unit.x = {}", cur_unit.x);
+    println!("cur_unit.z = {}", cur_unit.z);
+    
+    println!("(cur_unit.x + (cur_unit.z << 5)) = {}", ((cur_unit.x as i32) + ((cur_unit.z as i32) << 5)));
     let result = core_get(mapimage_instance.terrain.m_result, ((cur_unit.x as i32) + ((cur_unit.z as i32) << 5)).into());
+  
     let ter_dat = TerrainData::try_index_get(result.into()).unwrap();
-
+  
+    println!("Terrain Data = {}", ter_dat.name);
     if ter_dat.is_not_target() {
+      println!("Terrain Data is not a valid target");
       return;
     }
   
@@ -305,6 +333,7 @@ impl MapTarget {
     }
   
     if force_type1 < 3 {
+      println!("force is valid");
       let mask_skill = cur_unit.mask_skill.unwrap();
       if (cur_unit.status.value & 0x600008000000 == 0) && (mask_skill.flags & 0x14 == 0) && (mask_skill.bad_States & 0x4d0 == 0){
         let mut x: i32 = self.x.into();
@@ -355,6 +384,9 @@ impl MapTarget {
                 loop {
                   if x == local_90.m_max_x{
                     if z == local_90.m_min_z{
+                      // Gone because the function is literally empty.
+                      // local_90.RangeEnumerator_Dispose();
+                      println!("No valid Targets in range");
                       return;
                     }
                     z = z - 1;
@@ -377,7 +409,11 @@ impl MapTarget {
   
                 if let Some(unit) = mapimage_instance.get_target_unit(x, z) {
                   target_unit = unit;
+                  println!("Target unit = {}", target_unit.person.unit_icon_id.unwrap());
                   break;
+                }
+                else {
+                  println!("Target unit = None");
                 }
               }
               
@@ -397,8 +433,10 @@ impl MapTarget {
               // BUT THIS IS WRONG!!!!
               // What it does is *the loop repeats for as long as the forces DIFFER!
               if (force_type1 != force_type2) && ((target_unit.x == cur_unit.x) || (target_unit.z == cur_unit.z)) {
+                println!("Target unit is different force and not diagonal");
                 break;
               }
+              println!("Target unit is same force or diagonal");
             }
   
             loop {
@@ -450,6 +488,7 @@ impl MapTarget {
             let ter_dat = TerrainData::try_index_get(result.into()).unwrap();
   
             if ter_dat.is_not_target() {
+              println!("Terrain Data is not a valid target 2");
               return;
             }
   
@@ -469,14 +508,30 @@ impl MapTarget {
                   entry.set(target_unit, x, z, 0, -1);
                   self.m_dataset.as_mut().unwrap().m_list.add(entry);
                 }
+                else {
+                  println!("DataSet capacity 0 or less");
+                }
+              }
+              else {
+                println!("Target Unit's status/flag/bad states are funky");
               }
             }
+            else {
+              println!("Target Unit's Force Type & 0x19 == 0");
+              println!("Target Unit's Force Type == {}", force_type);
+            }
+          }
+          else {
+            println!("Target Unit's HP is funky");
           }
         }
       }
       else{
+        println!("General Return");
         return;
       }
     }
+    println!("General Return 2");
+    //call_original!(this, _method_info);
   }
 }
