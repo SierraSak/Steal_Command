@@ -33,7 +33,7 @@ impl MapSequenceTargetSelect {
 
 #[unity::class("App", "MapSequenceHuman")]
 pub struct MapSequenceHuman {
-    sup: [u8;0x10],
+    sup: [u8;0x68],
     job_intro_unit: Option<&'static Unit>,
     job_intro_keyhelp_type: i32,
     return_label: i32,
