@@ -1,11 +1,6 @@
 #![feature(ptr_sub_ptr)]
 use engage::{
-    util::get_instance,
-    proc::ProcInst,
-    proc::Bindable,
-    menu::*,
-    gamedata::skill::SkillArray,
-    gamedata::unit::Unit,
+    gamedata::{skill::SkillArray, unit::Unit}, menu::*, proc::{Bindable, ProcInst}, singleton::SingletonProcInst, util::get_instance
 };
 
 use std::sync::OnceLock;
@@ -31,6 +26,7 @@ impl MapSequenceTargetSelect {
     }
 }
 
+#[repr(C)]
 #[unity::class("App", "MapSequenceHuman")]
 pub struct MapSequenceHuman {
     sup: [u8;0x68],
@@ -98,7 +94,6 @@ impl MapMind {
 
     pub fn set_tradeunitindex(&mut self, value: i32,) {
         self.focus_x = value as i8;
-        return;
     }
 }
 
@@ -112,6 +107,24 @@ pub struct MapUnitCommandMenu {
 #[unity::class("", "MapUnitCommandMenu.TradeMenuItem")]
 pub struct TradeMenuItem {
     base: BasicMenuItemFields
+}
+
+pub fn get_singleton_proc_instance<T: unity::prelude::Il2CppClassData>() -> Option<&'static mut T> {
+    let idk = get_generic_class!(SingletonProcInst<T>).unwrap();
+
+    let pointer = unsafe {
+        &*(idk.rgctx_data as *const il2cpp::class::Il2CppRGCTXData as *const u8 as *const [&'static MethodInfo; 6])
+    };
+
+    pointer.get(4).map(|method| {
+        method.get_parameters().iter().for_each(|param| println!("Parameter: {}", param.get_name().unwrap_or_default()));
+        
+        let func = unsafe { std::mem::transmute::<_, extern "C" fn(OptionalMethod) -> Option<&'static mut T>>(
+            method.method_ptr,
+        ) };
+
+        func(Some(method))
+    }).unwrap()
 }
 
 #[skyline::from_offset(0x1f372e0)]
@@ -128,33 +141,38 @@ static STEAL_CLASS: OnceLock<&'static mut Il2CppClass> = OnceLock::new();
 #[unity::hook("App", "MapSequenceTargetSelect", "DecideNormal")]
 pub fn MapSequenceTargetSelect_DecideNormal(this: &mut MapSequenceTargetSelect, _method_info: OptionalMethod) {
     let mut maptarget_instance = get_instance::<enume::MapTarget>();
+
     let cur_mind = maptarget_instance.m_mind;
+
     if cur_mind == 0x37 {
         let cur_unit = maptarget_instance.unit;
         let cur_skill = maptarget_instance.m_command_skill;
         let mapmind_instance = get_instance::<MapMind>();
+
+        // mapmind_instance.get_class().get_fields().iter().for_each(|field| println!("Field: {}", field.get_name().unwrap_or_default()));
+
         let can_select_check = this.can_select_target();
         let mut unit_index = 7;
-        if (can_select_check) && (this.target_data.is_some()) && (this.target_data.unwrap().unit.is_some()) {
-            unit_index = this.target_data.unwrap().unit.unwrap().index;
-            
+
+        if (can_select_check) && (this.target_data.is_some()) {
+            unit_index = this.target_data.unwrap().m_unit.index;
         }
 
-        mapmind_instance.focus_x = unit_index as i8;
-        //panic!("{}", mapmind_instance.focus_x);
+        mapmind_instance.set_tradeunitindex(unit_index as _);
         
-        let mapsequencehuman_instance = get_instance::<MapSequenceHuman>();
+        let mapsequencehuman_instance = get_singleton_proc_instance::<MapSequenceHuman>().unwrap();
         
-        unsafe{engage::proc::procinst_jump(mapsequencehuman_instance, 0x1b, None)};
+        unsafe{ engage::proc::procinst_jump(mapsequencehuman_instance, 0x1b, None) };
 
-        unsafe{gamesound_postevent("Decide".into(), None, None);}
-        return;
+
+        unsafe{ gamesound_postevent("Decide".into(), None, None) };
+
+        println!("post sound");
 
     }
     else {
-        call_original!(this, _method_info);
+        call_original!(this, _method_info)
     }
-    return;
 }
 
 #[unity::hook("App", "MapTarget", "Enumerate")]
