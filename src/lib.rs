@@ -1,11 +1,107 @@
 #![feature(ptr_sub_ptr)]
-use engage::menu::*;
+use engage::{
+    util::get_instance,
+    proc::ProcInst,
+    proc::Bindable,
+    menu::*,
+    gamedata::skill::SkillArray,
+    gamedata::unit::Unit,
+};
 
 use std::sync::OnceLock;
 
 use unity::{prelude::*, system::List};
 
 mod enume;
+
+#[unity::class("App", "MapSequenceTargetSelect")]
+pub struct MapSequenceTargetSelect {
+    sup: [u8;0x10],
+    target_data: Option<&'static enume::MapTarget>,
+    item_index: i32,
+    battle_info: &'static (),
+    battle_calc: &'static (),
+    engage_link_info: &'static (),
+    mask_skill: &'static SkillArray,
+}
+
+impl MapSequenceTargetSelect {
+    pub fn can_select_target(&self) -> bool {
+        unsafe { mapSequencetargetselect_canselecttarget(self, None) }
+    }
+}
+
+#[unity::class("App", "MapSequenceHuman")]
+pub struct MapSequenceHuman {
+    sup: [u8;0x10],
+    job_intro_unit: Option<&'static Unit>,
+    job_intro_keyhelp_type: i32,
+    return_label: i32,
+    old_unit_x: i32,
+    old_unit_z: i32,
+    old_cursor_x: i32,
+    old_cursor_z: i32,
+    old_pickup_x: i32,
+    old_pickup_z: i32,
+    engage_x: i32,
+    engage_z: i32,
+    enter_x: i32,
+    enter_z: i32,
+    is_enemy_attack_range: bool,
+    is_update_support_skill: bool,
+    update_support_skill_unit: Option<&'static Unit>,
+    operate_mode: i32,
+}
+
+impl Bindable for MapSequenceHuman { }
+
+#[repr(C)]
+#[unity::class("App", "MapMind")]
+pub struct MapMind {
+    sup: [u8;0x10],
+    unit_index: u8,
+    first_unit_index: u8,
+    first_x: i8,
+    first_z: i8,
+    unit_show_x: i8,
+    unit_show_z: i8,
+    x: i8,
+    z: i8,
+    mind: i32,
+    attack_x: i8,
+    attack_z: i8,
+    item_index: i8,
+    target_unit_index: u8,
+    target_x: i8,
+    target_z: i8,
+    focus_x: i8,
+    focus_z: i8,
+    target_argument: i16,
+    trade_unit_index: u8,
+    event_unit_index: u8,
+}
+
+// App.MapMind$$get_Unit	7101dee2b0	App_Unit_o * App.MapMind$$get_Unit(App_MapMind_o * __this, MethodInfo * method)	12
+#[unity::from_offset("App", "MapMind", "get_Unit")]
+fn get_unit(this: &MapMind, method_info: OptionalMethod) -> &mut Unit;
+
+impl MapMind {
+    pub fn get_instance() -> &'static mut MapMind {
+        get_instance::<MapMind>()
+    }
+
+    /// Seems to get the current unit that is selected by the player. Needs more experimentation.
+    pub fn get_unit() -> &'static mut Unit {
+        let instance = Self::get_instance();
+        unsafe { get_unit(instance, None) }
+    }
+
+    pub fn set_tradeunitindex(&mut self, value: i32,) {
+        self.focus_x = value as i8;
+        return;
+    }
+}
+
 
 #[unity::class("App", "MapUnitCommandMenu")]
 pub struct MapUnitCommandMenu {
@@ -18,7 +114,48 @@ pub struct TradeMenuItem {
     base: BasicMenuItemFields
 }
 
+#[skyline::from_offset(0x1f372e0)]
+extern "C" fn mapSequencetargetselect_canselecttarget(this: &MapSequenceTargetSelect, method_info: OptionalMethod) -> bool;
+
+#[skyline::from_offset(0x2272fd0)]
+extern "C" fn gamesound_postevent(eventname: &'static Il2CppString, character: Option<&()>, method_info: OptionalMethod) -> bool;
+
+
 static STEAL_CLASS: OnceLock<&'static mut Il2CppClass> = OnceLock::new();
+
+
+
+#[unity::hook("App", "MapSequenceTargetSelect", "DecideNormal")]
+pub fn MapSequenceTargetSelect_DecideNormal(this: &mut MapSequenceTargetSelect, _method_info: OptionalMethod) {
+    let mut maptarget_instance = get_instance::<enume::MapTarget>();
+    let cur_mind = maptarget_instance.m_mind;
+    if cur_mind == 0x37 {
+        let cur_unit = maptarget_instance.unit;
+        let cur_skill = maptarget_instance.m_command_skill;
+        let mapmind_instance = get_instance::<MapMind>();
+        let can_select_check = this.can_select_target();
+        let mut unit_index = 7;
+        if (can_select_check) && (this.target_data.is_some()) && (this.target_data.unwrap().unit.is_some()) {
+            unit_index = this.target_data.unwrap().unit.unwrap().index;
+            
+        }
+
+        mapmind_instance.focus_x = unit_index as i8;
+        //panic!("{}", mapmind_instance.focus_x);
+        
+        let mapsequencehuman_instance = get_instance::<MapSequenceHuman>();
+        
+        unsafe{engage::proc::procinst_jump(mapsequencehuman_instance, 0x1b, None)};
+
+        unsafe{gamesound_postevent("Decide".into(), None, None);}
+        return;
+
+    }
+    else {
+        call_original!(this, _method_info);
+    }
+    return;
+}
 
 #[unity::hook("App", "MapTarget", "Enumerate")]
 pub fn MapTarget_Enumerate(this: &mut enume::MapTarget, mask: i32, _method_info: OptionalMethod) {
@@ -143,5 +280,6 @@ pub fn main() {
     skyline::install_hooks!(
         MapBasicMenu_ctor,
         MapTarget_Enumerate,
+        MapSequenceTargetSelect_DecideNormal,
     );
 }
