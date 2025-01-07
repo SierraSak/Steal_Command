@@ -16,7 +16,7 @@ mod enume;
 
 #[unity::class("App", "MapSequenceTargetSelect")]
 pub struct MapSequenceTargetSelect {
-    sup: [u8;0x10],
+    sup: [u8;0x68],
     target_data: Option<&'static enume::MapTarget>,
     item_index: i32,
     battle_info: &'static (),
