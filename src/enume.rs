@@ -4,18 +4,62 @@ use unity::{
 };
 
 use engage::{
-  gamedata::{
-    terrain::TerrainData,
-    unit::Unit,
-    Gamedata
-  },
+  gamedata::{ terrain::TerrainData, unit::Unit, Gamedata },
   map::{
-    r#enum::RangeEnumerator,
+    r#enum::{MapRange, RangeEnumerator},
     image::{MapImage, MapImageCore, MapImageCoreByte}
   },
   sequence::mapsequencetargetselect::MapTarget,
   util::get_instance
 };
+
+#[repr(C)]
+#[derive(Default, Debug, Clone, Copy)]
+pub struct RangeEnumerator2 {
+  pub current: MapRange,
+  pub pivot_x: i32,
+  pub pivot_z: i32,
+  pub min_x: i32,
+  pub min_z: i32,
+  pub max_x: i32,
+  pub max_z: i32,
+  pub near: i32,
+  pub far: i32,
+}
+
+impl Iterator for RangeEnumerator2 {
+    // Maybe a (x, z) tuple with the current tile being checked?
+    type Item = (i32, i32);
+
+    fn next(&mut self) -> Option<Self::Item> {
+      loop {
+        if self.max_x == self.current.x {
+          if self.min_z == self.current.z {
+            // We went through all the possible positions
+            return None;
+          } else {
+            // We haven't gone through every z position yet, restart the loop from the leftmost X position and check again
+            self.current.z -= 1;
+            self.current.x = self.min_x;
+          }
+        } else {
+          // We haven't reached max_x yet, so continue
+          self.current.x += 1;
+        }
+
+        let piv_x = (self.current.x - self.pivot_x).abs();
+        let piv_z = (self.current.z - self.pivot_z).abs();
+
+        let piv = piv_x + piv_z;
+
+        if (piv >= self.near) && (piv <= self.far) {
+          break;
+        }
+      }
+
+      Some((self.current.x, self.current.z))
+    }
+}
 
 pub trait StealMapTargetEnumerator {
   fn enumerate_steal(&mut self);
@@ -23,11 +67,7 @@ pub trait StealMapTargetEnumerator {
 
 impl StealMapTargetEnumerator for MapTarget {
   fn enumerate_steal(&mut self) {
-    // Moved down because GetEnumerator() returns it
-    // let local_90 = RangeEnumerator::default();
     let mut local_c0 = RangeEnumerator::default();
-    // Gone because it's instantiated in GetEnumerator();
-    // let local_f0 = RangeEnumerator::default();
   
     if self.unit.is_none() {
       println!("self.unit = None");
@@ -81,7 +121,7 @@ impl StealMapTargetEnumerator for MapTarget {
   
     let mut force_type1 = 7;
   
-    if cur_unit.force.unwrap().force_type < 3{
+    if cur_unit.force.unwrap().force_type < 3 {
       force_type1 = cur_unit.force.unwrap().force_type & 0x1f;
     }
   
@@ -97,15 +137,15 @@ impl StealMapTargetEnumerator for MapTarget {
         let x_2 = (x + 1).clamp(mapimage_instance.playarea_x1, mapimage_instance.playarea_x2);
         let z_2 = (z + 1).clamp(mapimage_instance.playarea_z1, mapimage_instance.playarea_z2);
         local_c0.max_z = z_2;
-        local_c0.current.z = local_c0.max_z;
+        local_c0.current.z = z_2;
         local_c0.current.x = x_1 - 1;
         local_c0.min_x = x_1;
         local_c0.pivot_z = z;
+        local_c0.pivot_x = x_1 + 1;
         local_c0.near = 1;
         local_c0.far = 1;
         // lol whatever i'm tired and don't wanna deal with this, pray the gods are benevolent
         // local_c0.m_current.range = x_1 << 0x20;
-        //(local_c0.m_current.range, _) = x_1.overflowing_shl(0x20);
         (local_c0.current.range, _) = x_1.overflowing_shl(0x20);
         local_c0.max_x = x_2;
         local_c0.min_z = z_1;
@@ -116,16 +156,38 @@ impl StealMapTargetEnumerator for MapTarget {
         // ICYMI, C# enumerators are basically Rust iterators. This is also used to do Foreach.
         // Considering we have a huge loop that follows, you can probably tell where this is going.
         let mut local_90 = local_c0.get_enumerator();
+
+        let test_enum = RangeEnumerator2 {
+            current: local_90.current,
+            pivot_x: local_90.pivot_x,
+            pivot_z: local_90.pivot_z,
+            min_x: local_90.min_x,
+            min_z: local_90.min_z,
+            max_x: local_90.max_x,
+            max_z: local_90.max_z,
+            near: local_90.near,
+            far: local_90.far,
+        };
   
         let mut force_type2 = 7;
         let mut item_index = 0;
   
         let mut target_unit: &Unit = Unit::instantiate().unwrap();
+
         loop {
           'outer: loop {
             loop {
               // Moved where it actually matters
-  
+
+              // dbg!(&test_enum);
+
+              test_enum.flat_map(|(x, z)| {
+                println!("Iterating through ({x}, {z})");
+                mapimage_instance.get_target_unit(x, z)
+              }).for_each(|unit| {
+                println!("Unit found: {}", engage::mess::Mess::get(unit.person.get_name().unwrap()))
+              });
+              
               // Seems like the objective of this loop is walking through the range of coordinates until a Unit is found in the MapImage and break when it happens.
               loop {
                 x = local_90.current.x;
@@ -133,21 +195,26 @@ impl StealMapTargetEnumerator for MapTarget {
   
                 let mut piv_x;
                 let mut piv_z;
-  
+
+                // Repeat while piv isn't higher than near or far
                 loop {
+                  //
                   if x == local_90.max_x{
-                    if z == local_90.min_z{
+                    // If both max coords are reached, we found nothing and stop here
+                    if z == local_90.min_z {
                       // Gone because the function is literally empty.
                       // local_90.RangeEnumerator_Dispose();
                       println!("No valid Targets in range");
                       return;
                     }
+                    // We haven't gone through every z position yet, restart the loop from the leftmost X position and check again
                     z = z - 1;
                     x = local_90.min_x;
                   }
                   else {
                     x = x + 1;
                   }
+
                   piv_x = (x - local_90.pivot_x).abs();
                   piv_z = (z - local_90.pivot_z).abs();
   
@@ -155,11 +222,13 @@ impl StealMapTargetEnumerator for MapTarget {
                     break;
                   }
                 }
-  
+
+                // Write the current coords for the next run of the loop
                 local_90.current.x = x;
                 local_90.current.z = z;
                 local_90.current.range = piv_x + piv_z;
-  
+
+                // This'd be the content of the iterator closure
                 if let Some(unit) = mapimage_instance.get_target_unit(x, z) {
                   target_unit = unit;
                   println!("Target unit = {}", target_unit.person.unit_icon_id.unwrap());
