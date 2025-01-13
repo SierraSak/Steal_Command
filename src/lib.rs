@@ -125,6 +125,41 @@ impl MapBattleInfoParamSetter {
     }
 }
 
+#[repr(C)]
+#[unity::class("App", "BasicMenuItem")]
+pub struct BasicMenuItem {
+    menu: &'static (),
+    menu_item_content: &'static (),
+    name: Option<&'static Il2CppString>,
+    index: i32,
+    full_index: i32,
+    attribute: i32,
+    cursor_color_r: f32,
+    cursor_color_g: f32,
+    cursor_color_b: f32,
+    cursor_color_a: f32,
+    active_text_color_r: f32,
+    active_text_color_g: f32,
+    active_text_color_b: f32,
+    active_text_color_a: f32,
+    inactive_text_color_r: f32,
+    inactive_text_color_g: f32,
+    inactive_text_color_b: f32,
+    inactive_text_color_a: f32
+}
+
+#[unity::class("App", "SortieTradeItemMenuItem")]
+pub struct SortieTradeItemMenuItem {
+    sup: BasicMenuItemFields,
+    unit: Option<&'static Unit>,
+    receiver_unit: Option<&'static Unit>,
+    item_index: i32,
+    default_select: bool,
+    selectable_blank: bool,
+    enabled_to_select_blank: bool,
+    disabled: bool,
+}
+
 #[unity::from_offset("App", "MapSituation", "GetPlayer")]
 fn mapsituation_get_player(this: &MapSituation, forcetype: i32, method_info: OptionalMethod) -> i32;
 
@@ -152,6 +187,31 @@ fn mapsequencehuman_postitemmenutrade(this: &MapSequenceHuman, method_info: Opti
 
 
 static STEAL_CLASS: OnceLock<&'static mut Il2CppClass> = OnceLock::new();
+
+#[unity::hook("App", "BattleInfoSide", "CalcBattleTimesImpl")]
+pub fn battleinfoside_calcbattletimesimpl(this: &(), flag: &(), _method_info: OptionalMethod) -> i32{
+    
+    let mut times = call_original!(this, flag, _method_info);
+    if get_instance::<MapTarget>().m_mind == 0x37 { times = 0;};
+    times
+}
+
+#[unity::hook("App", "SortieTradeItemMenu", "CreateMenuItemList")]
+pub fn sortietradeitemmenuitem_createmenuitemlist(unit: &Unit, receiver_unit: &Unit, default_select: i32, _method_info: OptionalMethod) -> &'static mut List<SortieTradeItemMenuItem> {
+    let mut item_list: &mut List<SortieTradeItemMenuItem> = call_original!(unit, receiver_unit, default_select, _method_info);
+    if get_instance::<MapTarget>().m_mind == 0x37 {
+        let mut item = item_list.get_mut(0);
+        if item.is_none(){
+            return item_list;
+        }
+        
+        if item.as_ref().unwrap().unit.unwrap().item_list.get_item(0).unwrap().is_equip() {
+            item.as_mut().unwrap().disabled = true;
+        }
+    }
+    
+    item_list
+}
 
 #[skyline::hook(offset = 0x2677780)]
 pub fn mapsequencehuman_createbind(sup: &mut MapSequence, is_resume: bool, _method_info: OptionalMethod) {
@@ -193,7 +253,7 @@ pub fn mapsequencehuman_createbind(sup: &mut MapSequence, is_resume: bool, _meth
 }
 
 
-//Redo this shit later to be not jank.
+//Redo this shit later to be not jank.  (This is what the patched addresses are for.)
 #[unity::hook("App", "MapBattleInfoParamSetter", "SetBattleInfo")]
 pub fn mapbattleinfoparamsetter_setbattleinfo(this: &mut MapBattleInfoParamSetter, side_type: i32, show_window: bool, battle_info: &(), scene_list: &(), _method_info: OptionalMethod) {
     call_original!(this, side_type, show_window, battle_info, scene_list, _method_info);
@@ -302,7 +362,7 @@ pub fn mapbasicmenu_ctor(this: &(), menu_item_list: &mut List<TradeMenuItem>, me
             .unwrap();
 
         new_class
-            .get_virtual_method_mut("GetHelpText")
+            .get_virtual_method_mut("GetCommandHelp")
             .map(|method| method.method_ptr = steal_get_desc as _)
             .unwrap();
 
@@ -326,7 +386,7 @@ pub extern "C" fn steal_get_name(_this: &(), _method_info: OptionalMethod) -> &'
 }
 
 pub extern "C" fn steal_get_desc(_this: &(), _method_info: OptionalMethod) -> &'static Il2CppString {
-    "Take an item from an enemy.".into()
+    "Take items from an enemy.".into()
 }
 
 pub extern "C" fn steal_get_mind(_this: &(), _method_info: OptionalMethod) -> i32 {
@@ -377,6 +437,8 @@ pub fn main() {
         mapbattleinforoot_setcommandtext,
         mapbattleinfoparamsetter_setbattleinfo,
         mapsequencehuman_createbind,
+        sortietradeitemmenuitem_createmenuitemlist,
+        battleinfoside_calcbattletimesimpl,
     );
 
     skyline::patching::Patch::in_text(0x01f041ac).bytes(&[0x1f, 0x20, 0x03, 0xd5]).expect("Couldn’t patch that shit for some reasons");
