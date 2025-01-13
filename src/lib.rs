@@ -188,6 +188,7 @@ fn mapsequencehuman_postitemmenutrade(this: &MapSequenceHuman, method_info: Opti
 
 static STEAL_CLASS: OnceLock<&'static mut Il2CppClass> = OnceLock::new();
 
+//Makes the game not calculate damage.  AKA, no damage forcast arrows.
 #[unity::hook("App", "BattleInfoSide", "CalcBattleTimesImpl")]
 pub fn battleinfoside_calcbattletimesimpl(this: &(), flag: &(), _method_info: OptionalMethod) -> i32{
     
@@ -196,6 +197,7 @@ pub fn battleinfoside_calcbattletimesimpl(this: &(), flag: &(), _method_info: Op
     times
 }
 
+// Make equipped weapons un-stealable
 #[unity::hook("App", "SortieTradeItemMenu", "CreateMenuItemList")]
 pub fn sortietradeitemmenuitem_createmenuitemlist(unit: &Unit, receiver_unit: &Unit, default_select: i32, _method_info: OptionalMethod) -> &'static mut List<SortieTradeItemMenuItem> {
     let mut item_list: &mut List<SortieTradeItemMenuItem> = call_original!(unit, receiver_unit, default_select, _method_info);
@@ -213,6 +215,7 @@ pub fn sortietradeitemmenuitem_createmenuitemlist(unit: &Unit, receiver_unit: &U
     item_list
 }
 
+
 #[skyline::hook(offset = 0x2677780)]
 pub fn mapsequencehuman_createbind(sup: &mut MapSequence, is_resume: bool, _method_info: OptionalMethod) {
     call_original!(sup, is_resume, _method_info);
@@ -222,8 +225,6 @@ pub fn mapsequencehuman_createbind(sup: &mut MapSequence, is_resume: bool, _meth
     let desc = engage::proc::desc::ProcDesc::jump(0x10);
     vec.insert(0x9a, desc);
 
-
-    
     let method = mapsequencehuman_postitemmenutrade::get_ref();
     let method = unsafe { std::mem::transmute(method.method_ptr) };
     let desc = unsafe { ProcDesc::call(ProcVoidMethodMut::new(&mut (*sup.child), method)) };
@@ -247,13 +248,13 @@ pub fn mapsequencehuman_createbind(sup: &mut MapSequence, is_resume: bool, _meth
     let steal_label = ProcDesc::label(53);
     vec.insert(0x9a, steal_label);
 
-    //Figure out how to put the new vector back in.
     let new_descs = Il2CppArray::from_slice(vec).unwrap();
     unsafe { (*sup.child).descs = new_descs };
 }
 
 
 //Redo this shit later to be not jank.  (This is what the patched addresses are for.)
+//Make the Trade preview windo show up when highlighting an enemy with Steal, instead of the battle preview.
 #[unity::hook("App", "MapBattleInfoParamSetter", "SetBattleInfo")]
 pub fn mapbattleinfoparamsetter_setbattleinfo(this: &mut MapBattleInfoParamSetter, side_type: i32, show_window: bool, battle_info: &(), scene_list: &(), _method_info: OptionalMethod) {
     call_original!(this, side_type, show_window, battle_info, scene_list, _method_info);
@@ -271,6 +272,7 @@ pub fn mapbattleinfoparamsetter_setbattleinfo(this: &mut MapBattleInfoParamSette
     return;
 }
 
+//Make "Steal" appear on the preview when highlighting an enemy to steal from
 #[unity::hook("App", "MapBattleInfoRoot", "SetCommandText")]
 pub fn mapbattleinforoot_setcommandtext(this: &mut MapBattleInfoRoot, mind_type: i32, _method_info: OptionalMethod) {
     if mind_type != 0x37 {
@@ -288,8 +290,6 @@ pub fn mapsequencetargetselect_decide_normal(this: &mut MapSequenceTargetSelect,
     let cur_mind = maptarget_instance.m_mind;
 
     if cur_mind == 0x37 {
-        // let cur_unit = maptarget_instance.unit;
-        // let cur_skill = maptarget_instance.m_command_skill;
         let mapmind_instance = get_instance::<MapMind>();
 
         let can_select_check = this.can_select_target();
@@ -311,6 +311,7 @@ pub fn mapsequencetargetselect_decide_normal(this: &mut MapSequenceTargetSelect,
         call_original!(this, _method_info)
     }
 }
+
 
 #[unity::hook("App", "MapTarget", "Enumerate")]
 pub fn maptarget_enumerate(this: &mut MapTarget, mask: i32, _method_info: OptionalMethod) {
@@ -345,6 +346,7 @@ pub fn maptarget_enumerate(this: &mut MapTarget, mask: i32, _method_info: Option
 
 }
 
+//Create our new menu command for Steal
 #[unity::hook("App", "MapBasicMenu", ".ctor")]
 pub fn mapbasicmenu_ctor(this: &(), menu_item_list: &mut List<TradeMenuItem>, menucontent: &BasicMenuContent, _method_info: OptionalMethod) {
     let steal = STEAL_CLASS.get_or_init(|| {
