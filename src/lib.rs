@@ -9,11 +9,48 @@ use engage::{
     gamesound::GameSound, mapmind::MapMind, menu::*, proc::ProcInst, sequence::{
         mapsequence::human::MapSequenceHuman,
         mapsequencetargetselect::{MapSequenceTargetSelect, MapTarget}
-    }, gamedata::unit::Unit, proc::{desc::ProcDesc, ProcVoidFunction, ProcVoidMethod, Bindable}, util::{get_instance, get_singleton_proc_instance}
+    }, gamedata::unit::Unit, proc::{desc::ProcDesc, Bindable}, util::{get_instance, get_singleton_proc_instance}
 };
 
 mod enume;
 use enume::StealMapTargetEnumerator;
+
+// Don't mind this too much, just making sure I don't lose it for now
+
+// #[repr(transparent)]
+// pub struct IlCell<T: Il2CppClassData + 'static> {
+//     value: UnsafeCell<*const T>
+// }
+
+// impl<T: Il2CppClassData + 'static> IlCell<T> {
+//     pub const fn new(value: *const T) -> IlCell<T> {
+//         IlCell { value: UnsafeCell::new(value) }
+//     }
+
+//     pub const fn set(&self, val: *const T) {
+//         unsafe { *self.value.get() = val };
+//     }
+
+//     pub const fn get(&self) -> &'static T {
+//         unsafe { & **self.value.get() }
+//     }
+
+//     pub const fn get_mut(&self) -> &'static mut T {
+//         unsafe { &mut *(*self.value.get() as *mut T) }
+//     }
+
+//     pub const fn as_ptr(&self) -> *mut T {
+//         unsafe { *self.value.get() as *mut T }
+//     }
+// }
+
+// impl<T: Il2CppClassData + 'static> std::ops::Deref for IlCell<T> {
+//     type Target = T;
+
+//     fn deref(&self) -> &Self::Target {
+//         self.get()
+//     }
+// }
 
 #[unity::class("App", "MapBattleInfoRoot")]
 pub struct MapBattleInfoRoot {
@@ -111,9 +148,7 @@ impl<T: Bindable> ProcVoidMethodMut<T> {
 }
 
 #[unity::class("App", "MapBattleInfoParamSetter")]
-pub struct MapBattleInfoParamSetter {
-    
-}
+pub struct MapBattleInfoParamSetter { }
 
 impl MapBattleInfoParamSetter {
     pub fn set_battle_info_for_trade(&self) {
@@ -123,29 +158,6 @@ impl MapBattleInfoParamSetter {
     pub fn set_battle_info_for_no_param(&self, isweapon: bool, isgodname: bool) {
         unsafe { mapbattleinfoparamsetter_setbattleinfofornoparam(self, isweapon, isgodname, None) }
     }
-}
-
-#[repr(C)]
-#[unity::class("App", "BasicMenuItem")]
-pub struct BasicMenuItem {
-    menu: &'static (),
-    menu_item_content: &'static (),
-    name: Option<&'static Il2CppString>,
-    index: i32,
-    full_index: i32,
-    attribute: i32,
-    cursor_color_r: f32,
-    cursor_color_g: f32,
-    cursor_color_b: f32,
-    cursor_color_a: f32,
-    active_text_color_r: f32,
-    active_text_color_g: f32,
-    active_text_color_b: f32,
-    active_text_color_a: f32,
-    inactive_text_color_r: f32,
-    inactive_text_color_g: f32,
-    inactive_text_color_b: f32,
-    inactive_text_color_a: f32
 }
 
 #[unity::class("App", "SortieTradeItemMenuItem")]
@@ -162,6 +174,15 @@ pub struct SortieTradeItemMenuItem {
 
 #[unity::from_offset("App", "MapSituation", "GetPlayer")]
 fn mapsituation_get_player(this: &MapSituation, forcetype: i32, method_info: OptionalMethod) -> i32;
+
+#[unity::class("App", "InfoUtil")]
+pub struct InfoUtil { }
+
+impl InfoUtil {
+    pub fn try_set_text(tmp: &(), string: impl Into<&'static Il2CppString>) {
+        unsafe { infoutil_trysettext(tmp, string.into(), None) }
+    }
+}
 
 #[unity::from_offset("App", "InfoUtil", "TrySetText")]
 fn infoutil_trysettext(tmp: &(), str: &'static Il2CppString, method_info: OptionalMethod);
@@ -185,37 +206,47 @@ fn mapitemmenu_createbindtrade(sup: &ProcInst, method_info: OptionalMethod);
 #[unity::from_offset("App", "MapSequenceHuman", "PostItemMenuTrade")]
 fn mapsequencehuman_postitemmenutrade(this: &MapSequenceHuman, method_info: OptionalMethod);
 
-
 static STEAL_CLASS: OnceLock<&'static mut Il2CppClass> = OnceLock::new();
 
-//Makes the game not calculate damage.  AKA, no damage forcast arrows.
+// Makes the game not calculate damage.  AKA, no damage forcast arrows.
 #[unity::hook("App", "BattleInfoSide", "CalcBattleTimesImpl")]
-pub fn battleinfoside_calcbattletimesimpl(this: &(), flag: &(), _method_info: OptionalMethod) -> i32{
-    
+pub fn battleinfoside_calcbattletimesimpl(this: &(), flag: &(), _method_info: OptionalMethod) -> i32 {
     let mut times = call_original!(this, flag, _method_info);
-    if get_instance::<MapTarget>().m_mind == 0x37 { times = 0;};
+
+    if get_instance::<MapTarget>().m_mind == 0x37 {
+        times = 0;
+    }
+
     times
 }
 
 // Make equipped weapons un-stealable
 #[unity::hook("App", "SortieTradeItemMenu", "CreateMenuItemList")]
 pub fn sortietradeitemmenuitem_createmenuitemlist(unit: &Unit, receiver_unit: &Unit, default_select: i32, _method_info: OptionalMethod) -> &'static mut List<SortieTradeItemMenuItem> {
-    let mut item_list: &mut List<SortieTradeItemMenuItem> = call_original!(unit, receiver_unit, default_select, _method_info);
+    let item_list: &mut List<SortieTradeItemMenuItem> = call_original!(unit, receiver_unit, default_select, _method_info);
+
+    // Check if the command we're processing is Steal
     if get_instance::<MapTarget>().m_mind == 0x37 {
-        let mut item = item_list.get_mut(0);
-        if item.is_none(){
-            return item_list;
-        }
-        
-        if item.as_ref().unwrap().unit.unwrap().item_list.get_item(0).unwrap().is_equip() {
-            item.as_mut().unwrap().disabled = true;
+        if let Some(menu_item) = item_list.get_mut(0) {
+            // Get the unit this MenuItem refers to
+            if let Some(unit) = menu_item.unit {
+                // Get the first item in the Unit's inventory
+                if let Some(first_item) = unit.item_list.get_item(0) {
+                    // Check if the unit has equipped this item
+                    if first_item.is_equip() {
+                        // Disable that MenuItem in the menu
+                        menu_item.disabled = true;
+                    }
+                }
+            }
         }
     }
-    
+
+    // No matter what, we give back the list of MenuItems
     item_list
 }
 
-
+// Ray: I do not see.
 #[skyline::hook(offset = 0x2677780)]
 pub fn mapsequencehuman_createbind(sup: &mut MapSequence, is_resume: bool, _method_info: OptionalMethod) {
     call_original!(sup, is_resume, _method_info);
@@ -253,8 +284,8 @@ pub fn mapsequencehuman_createbind(sup: &mut MapSequence, is_resume: bool, _meth
 }
 
 
-//Redo this shit later to be not jank.  (This is what the patched addresses are for.)
-//Make the Trade preview windo show up when highlighting an enemy with Steal, instead of the battle preview.
+// Redo this shit later to be not jank.  (This is what the patched addresses are for.)
+// Make the Trade preview window show up when highlighting an enemy with Steal, instead of the battle preview.
 #[unity::hook("App", "MapBattleInfoParamSetter", "SetBattleInfo")]
 pub fn mapbattleinfoparamsetter_setbattleinfo(this: &mut MapBattleInfoParamSetter, side_type: i32, show_window: bool, battle_info: &(), scene_list: &(), _method_info: OptionalMethod) {
     call_original!(this, side_type, show_window, battle_info, scene_list, _method_info);
@@ -263,24 +294,20 @@ pub fn mapbattleinfoparamsetter_setbattleinfo(this: &mut MapBattleInfoParamSette
 
     let cur_mind = maptarget_instance.m_mind;
 
-    if cur_mind == 0x37 {
-        this.set_battle_info_for_trade();
+    match cur_mind {
+        0x37 => this.set_battle_info_for_trade(),
+        _ => this.set_battle_info_for_no_param(false, true)
     }
-    else if cur_mind > 0x36 {
-        this.set_battle_info_for_no_param(false, true);
-    }
-    return;
 }
 
-//Make "Steal" appear on the preview when highlighting an enemy to steal from
+//M ake "Steal" appear on the preview when highlighting an enemy to steal from
 #[unity::hook("App", "MapBattleInfoRoot", "SetCommandText")]
 pub fn mapbattleinforoot_setcommandtext(this: &mut MapBattleInfoRoot, mind_type: i32, _method_info: OptionalMethod) {
     if mind_type != 0x37 {
         call_original!(this, mind_type, _method_info);
-        return;
+    } else {
+        InfoUtil::try_set_text(&this.command_text, "Steal");
     }
-    unsafe{infoutil_trysettext(this.command_text, "Steal".into(), None)};
-    return;
 }
 
 #[unity::hook("App", "MapSequenceTargetSelect", "DecideNormal")]
@@ -292,10 +319,9 @@ pub fn mapsequencetargetselect_decide_normal(this: &mut MapSequenceTargetSelect,
     if cur_mind == 0x37 {
         let mapmind_instance = get_instance::<MapMind>();
 
-        let can_select_check = this.can_select_target();
         let mut unit_index = 7;
 
-        if (can_select_check) && (this.target_data.is_some()) {
+        if this.can_select_target() && this.target_data.is_some() {
             unit_index = this.target_data.unwrap().m_unit.index;
         }
 
@@ -306,8 +332,7 @@ pub fn mapsequencetargetselect_decide_normal(this: &mut MapSequenceTargetSelect,
         ProcInst::jump(mapsequencehuman_instance, 0x35);
 
         GameSound::post_event("Decide", None);
-    }
-    else {
+    } else {
         call_original!(this, _method_info)
     }
 }
@@ -317,39 +342,43 @@ pub fn mapsequencetargetselect_decide_normal(this: &mut MapSequenceTargetSelect,
 pub fn maptarget_enumerate(this: &mut MapTarget, mask: i32, _method_info: OptionalMethod) {
     if this.m_mind < 0x37 {
         call_original!(this, mask, _method_info);
-    }
-    else {
+    } else {
         this.m_action_mask = mask as u32;
 
-        if this.unit.is_some() {
+        if let Some(unit) = this.unit {
             if this.x < 0 {
-                this.x = this.unit.unwrap().x as i8;
+                this.x = unit.x as i8;
             }
+
             if this.z < 0 {
-                this.z = this.unit.unwrap().z as i8;
+                this.z = unit.z as i8;
             }
-            if this.m_dataset.is_some() {
-                this.m_dataset.as_mut().unwrap().clear();
-            }
-            this.enumerate_steal();
-            
-            this.m_dataset.as_mut().unwrap().m_list
+        }
+
+        if let Some(dataset) = this.m_dataset.as_mut() {
+            dataset.clear();
+        }
+
+        this.enumerate_steal();
+
+        if let Some(dataset) = this.m_dataset.as_mut() {
+            dataset.m_list
                 .iter_mut()
                 .enumerate()
                 .for_each(|(count_var, data_item)| {
-                    data_item.m_index = count_var as i8;
-                    
+                    data_item.m_index = count_var as i8;    
                 });
         }
-        return;
     }
 
 }
 
-//Create our new menu command for Steal
+// Create our new menu command for Steal
 #[unity::hook("App", "MapBasicMenu", ".ctor")]
 pub fn mapbasicmenu_ctor(this: &(), menu_item_list: &mut List<TradeMenuItem>, menucontent: &BasicMenuContent, _method_info: OptionalMethod) {
+    // Create a new class using TradeMenuItem as reference so that we do not wreck the original command for ours.
     let steal = STEAL_CLASS.get_or_init(|| {
+        // TrdeMenuItem is a nested class inside of MapUnitCommandMenu, so we need to dig for it.
         let menu_class  = *MapUnitCommandMenu::class()
             .get_nested_types()
             .iter()
@@ -376,6 +405,7 @@ pub fn mapbasicmenu_ctor(this: &(), menu_item_list: &mut List<TradeMenuItem>, me
         new_class
     });
 
+    // Instantiate our custom class as if it was TradeMenuItem
     let instance = Il2CppObject::<TradeMenuItem>::from_class(steal).unwrap();
 
     menu_item_list.add(instance);

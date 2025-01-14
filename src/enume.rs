@@ -6,61 +6,14 @@ use unity::{
 use engage::{
   gamedata::{ terrain::TerrainData, unit::Unit, Gamedata },
   map::{
-    r#enum::{MapRange, RangeEnumerator},
+    r#enum::RangeEnumerator,
     image::{MapImage, MapImageCore, MapImageCoreByte}
   },
   sequence::mapsequencetargetselect::MapTarget,
   util::get_instance
 };
 
-#[repr(C)]
-#[derive(Default, Debug, Clone, Copy)]
-pub struct RangeEnumerator2 {
-  pub current: MapRange,
-  pub pivot_x: i32,
-  pub pivot_z: i32,
-  pub min_x: i32,
-  pub min_z: i32,
-  pub max_x: i32,
-  pub max_z: i32,
-  pub near: i32,
-  pub far: i32,
-}
-
-impl Iterator for RangeEnumerator2 {
-    // Maybe a (x, z) tuple with the current tile being checked?
-    type Item = (i32, i32);
-
-    fn next(&mut self) -> Option<Self::Item> {
-      loop {
-        if self.max_x == self.current.x {
-          if self.min_z == self.current.z {
-            // We went through all the possible positions
-            return None;
-          } else {
-            // We haven't gone through every z position yet, restart the loop from the leftmost X position and check again
-            self.current.z -= 1;
-            self.current.x = self.min_x;
-          }
-        } else {
-          // We haven't reached max_x yet, so continue
-          self.current.x += 1;
-        }
-
-        let piv_x = (self.current.x - self.pivot_x).abs();
-        let piv_z = (self.current.z - self.pivot_z).abs();
-
-        let piv = piv_x + piv_z;
-
-        if (piv >= self.near) && (piv <= self.far) {
-          break;
-        }
-      }
-
-      Some((self.current.x, self.current.z))
-    }
-}
-
+// Define our new method as a trait so that we can extend the MapTarget structure without adding the function in the Engage crate
 pub trait StealMapTargetEnumerator {
   fn enumerate_steal(&mut self);
 }
@@ -156,37 +109,23 @@ impl StealMapTargetEnumerator for MapTarget {
         // ICYMI, C# enumerators are basically Rust iterators. This is also used to do Foreach.
         // Considering we have a huge loop that follows, you can probably tell where this is going.
         let mut local_90 = local_c0.get_enumerator();
-
-        let test_enum = RangeEnumerator2 {
-            current: local_90.current,
-            pivot_x: local_90.pivot_x,
-            pivot_z: local_90.pivot_z,
-            min_x: local_90.min_x,
-            min_z: local_90.min_z,
-            max_x: local_90.max_x,
-            max_z: local_90.max_z,
-            near: local_90.near,
-            far: local_90.far,
-        };
   
         let mut force_type2 = 7;
         let mut item_index = 0;
   
-        let mut target_unit: &Unit = Unit::instantiate().unwrap();
+        let mut target_unit: &Unit;
 
         loop {
           'outer: loop {
             loop {
               // Moved where it actually matters
 
-              // dbg!(&test_enum);
-
-              test_enum.flat_map(|(x, z)| {
-                println!("Iterating through ({x}, {z})");
-                mapimage_instance.get_target_unit(x, z)
-              }).for_each(|unit| {
-                println!("Unit found: {}", engage::mess::Mess::get(unit.person.get_name().unwrap()))
-              });
+              // local_90.flat_map(|(x, z)| {
+              //   println!("Iterating through ({x}, {z})");
+              //   mapimage_instance.get_target_unit(x, z)
+              // }).for_each(|unit| {
+              //   println!("Unit found: {}", engage::mess::Mess::get(unit.person.get_name().unwrap()))
+              // });
               
               // Seems like the objective of this loop is walking through the range of coordinates until a Unit is found in the MapImage and break when it happens.
               loop {
