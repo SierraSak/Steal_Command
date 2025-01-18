@@ -6,10 +6,10 @@ use mapunitcommand::{MapUnitCommandMenu, TradeMenuItem};
 use unity::{ prelude::*, system::List };
 
 use engage::{
-    gamesound::GameSound, mapmind::MapMind, menu::*, proc::ProcInst, sequence::{
+    force::ForceType, gamedata::unit::Unit, gamesound::GameSound, mapmind::MapMind, menu::*, proc::{desc::ProcDesc, Bindable, ProcInst}, sequence::{
         mapsequence::human::MapSequenceHuman,
         mapsequencetargetselect::{MapSequenceTargetSelect, MapTarget}
-    }, gamedata::unit::Unit, proc::{desc::ProcDesc, Bindable}, util::{get_instance, get_singleton_proc_instance}
+    }, util::{get_instance, get_singleton_proc_instance}
 };
 
 mod enume;
@@ -163,7 +163,7 @@ impl MapBattleInfoParamSetter {
 #[unity::class("App", "SortieTradeItemMenuItem")]
 pub struct SortieTradeItemMenuItem {
     sup: BasicMenuItemFields,
-    unit: Option<&'static Unit>,
+    unit: Option<&'static mut Unit>,
     receiver_unit: Option<&'static Unit>,
     item_index: i32,
     default_select: bool,
@@ -223,22 +223,16 @@ pub fn battleinfoside_calcbattletimesimpl(this: &(), flag: &(), _method_info: Op
 // Make equipped weapons un-stealable
 #[unity::hook("App", "SortieTradeItemMenu", "CreateMenuItemList")]
 pub fn sortietradeitemmenuitem_createmenuitemlist(unit: &Unit, receiver_unit: &Unit, default_select: i32, _method_info: OptionalMethod) -> &'static mut List<SortieTradeItemMenuItem> {
-    let item_list: &mut List<SortieTradeItemMenuItem> = call_original!(unit, receiver_unit, default_select, _method_info);
+    let item_list = call_original!(unit, receiver_unit, default_select, _method_info);
 
-    // Check if the command we're processing is Steal
-    if get_instance::<MapTarget>().m_mind == 0x37 {
-        if let Some(menu_item) = item_list.get_mut(0) {
-            // Get the unit this MenuItem refers to
-            if let Some(unit) = menu_item.unit {
-                // Get the first item in the Unit's inventory
-                if let Some(first_item) = unit.item_list.get_item(0) {
-                    // Check if the unit has equipped this item
-                    if first_item.is_equip() {
-                        // Disable that MenuItem in the menu
-                        menu_item.disabled = true;
-                    }
-                }
-            }
+    if unit.force.unwrap().force_type != ForceType::Player as i32 {
+        // Check if the command we're processing is Steal
+        if get_instance::<MapTarget>().m_mind == 0x37 {
+            item_list.iter_mut().zip(unit.item_list.fields.unit_items.iter()).for_each(|(menu_item, unit_item)| {
+                menu_item.disabled = unit_item.as_ref()
+                    .map(|current_item| current_item.is_equip() || current_item.item.weight > receiver_unit.get_capability(1, true) as u8)
+                    .unwrap_or_default();
+            });
         }
     }
 
@@ -294,9 +288,10 @@ pub fn mapbattleinfoparamsetter_setbattleinfo(this: &mut MapBattleInfoParamSette
 
     let cur_mind = maptarget_instance.m_mind;
 
-    match cur_mind {
-        0x37 => this.set_battle_info_for_trade(),
-        _ => this.set_battle_info_for_no_param(false, true)
+    if cur_mind == 0x37 {
+        this.set_battle_info_for_trade();
+    } else if cur_mind > 0x36 {
+        this.set_battle_info_for_no_param(false, true);
     }
 }
 
@@ -370,7 +365,6 @@ pub fn maptarget_enumerate(this: &mut MapTarget, mask: i32, _method_info: Option
                 });
         }
     }
-
 }
 
 // Create our new menu command for Steal
