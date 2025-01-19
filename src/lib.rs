@@ -404,6 +404,11 @@ pub fn mapbasicmenu_ctor(this: &(), menu_item_list: &mut List<TradeMenuItem>, me
             .map(|method| method.method_ptr = steal_get_mind as _)
             .unwrap();
 
+            new_class
+            .get_virtual_method_mut("get_FlagID")
+            .map(|method| method.method_ptr = steal_get_flagid as _)
+            .unwrap();
+
         new_class
     });
 
@@ -425,6 +430,10 @@ pub extern "C" fn steal_get_desc(_this: &(), _method_info: OptionalMethod) -> &'
 
 pub extern "C" fn steal_get_mind(_this: &(), _method_info: OptionalMethod) -> i32 {
     0x37
+}
+
+pub extern "C" fn steal_get_flagid(_this: &(), _method_info: OptionalMethod) -> &'static Il2CppString {
+    "Steal".into()
 }
 
 
