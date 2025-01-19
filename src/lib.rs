@@ -6,7 +6,7 @@ use mapunitcommand::{MapUnitCommandMenu, TradeMenuItem};
 use unity::{ prelude::*, system::List };
 
 use engage::{
-    force::ForceType, gamedata::unit::Unit, gamesound::GameSound, mapmind::MapMind, menu::*, proc::{desc::ProcDesc, Bindable, ProcInst}, sequence::{
+    force::ForceType, gamedata::{unit::Unit, skill::SkillData}, titlebar::TitleBar, gamesound::GameSound, mapmind::MapMind, menu::*, proc::{desc::ProcDesc, Bindable, ProcInst}, sequence::{
         mapsequence::human::MapSequenceHuman,
         mapsequencetargetselect::{MapSequenceTargetSelect, MapTarget}
     }, util::{get_instance, get_singleton_proc_instance}
@@ -14,43 +14,6 @@ use engage::{
 
 mod enume;
 use enume::StealMapTargetEnumerator;
-
-// Don't mind this too much, just making sure I don't lose it for now
-
-// #[repr(transparent)]
-// pub struct IlCell<T: Il2CppClassData + 'static> {
-//     value: UnsafeCell<*const T>
-// }
-
-// impl<T: Il2CppClassData + 'static> IlCell<T> {
-//     pub const fn new(value: *const T) -> IlCell<T> {
-//         IlCell { value: UnsafeCell::new(value) }
-//     }
-
-//     pub const fn set(&self, val: *const T) {
-//         unsafe { *self.value.get() = val };
-//     }
-
-//     pub const fn get(&self) -> &'static T {
-//         unsafe { & **self.value.get() }
-//     }
-
-//     pub const fn get_mut(&self) -> &'static mut T {
-//         unsafe { &mut *(*self.value.get() as *mut T) }
-//     }
-
-//     pub const fn as_ptr(&self) -> *mut T {
-//         unsafe { *self.value.get() as *mut T }
-//     }
-// }
-
-// impl<T: Il2CppClassData + 'static> std::ops::Deref for IlCell<T> {
-//     type Target = T;
-
-//     fn deref(&self) -> &Self::Target {
-//         self.get()
-//     }
-// }
 
 #[unity::class("App", "MapBattleInfoRoot")]
 pub struct MapBattleInfoRoot {
@@ -164,7 +127,7 @@ impl MapBattleInfoParamSetter {
 pub struct SortieTradeItemMenuItem {
     sup: BasicMenuItemFields,
     unit: Option<&'static mut Unit>,
-    receiver_unit: Option<&'static Unit>,
+    receiver_unit: Option<&'static mut Unit>,
     item_index: i32,
     default_select: bool,
     selectable_blank: bool,
@@ -174,6 +137,7 @@ pub struct SortieTradeItemMenuItem {
 
 #[unity::from_offset("App", "MapSituation", "GetPlayer")]
 fn mapsituation_get_player(this: &MapSituation, forcetype: i32, method_info: OptionalMethod) -> i32;
+
 
 #[unity::class("App", "InfoUtil")]
 pub struct InfoUtil { }
@@ -206,25 +170,50 @@ fn mapitemmenu_createbindtrade(sup: &ProcInst, method_info: OptionalMethod);
 #[unity::from_offset("App", "MapSequenceHuman", "PostItemMenuTrade")]
 fn mapsequencehuman_postitemmenutrade(this: &MapSequenceHuman, method_info: OptionalMethod);
 
+
 static STEAL_CLASS: OnceLock<&'static mut Il2CppClass> = OnceLock::new();
 
-// Makes the game not calculate damage.  AKA, no damage forcast arrows.
-#[unity::hook("App", "BattleInfoSide", "CalcBattleTimesImpl")]
-pub fn battleinfoside_calcbattletimesimpl(this: &(), flag: &(), _method_info: OptionalMethod) -> i32 {
-    let mut times = call_original!(this, flag, _method_info);
+// Change the header text.
+// This function is for creating the Header bar ar the top of the screen while the
+// Steal/Trade menus are open.  In truth, this particular hook is a bit of a cheat,
+// as I am allowing the game to open and create the normal 'Trade' header, and then
+// replacing it with the Steal text.  In testing, this hasn't caused any issues.
+// But inform one of us if you spot any oddities here.
+#[unity::hook("App", "SortieSequenceTrade", "Open")]
+pub fn sortiesequencetrade_open(this: &(), _method_info: OptionalMethod) {
+    call_original!(this, _method_info);
 
     if get_instance::<MapTarget>().m_mind == 0x37 {
-        times = 0;
+        TitleBar::open_header("Steal", "Take items from an enemy", "");    
     }
-
-    times
+    return
 }
 
-// Make equipped weapons un-stealable
+// Makes the game hide the damage forecast arrows.
+// This function is primarily for setting the
+// command name in between the two windows, and deciding whether to hide the damage arrows.
+// Thankfully, the default behavior is almost exactly what we want, we just need to adjust it
+// to return false, since that's what hides the damage arrows.
+#[unity::hook("App", "MapBattleInfoRoot", "Setup")]
+pub fn mapbattleinforoot_setup(this: &(), mindtype: i32, skill: &SkillData, info: &(), scene_list: &(), _method_info: OptionalMethod) -> bool {
+    let mut result = call_original!(this, mindtype, skill, info, scene_list, _method_info);
+
+    if mindtype == 0x37 {
+        result = false;
+    }
+
+    result
+}
+
+// Make some weapons un-stealable
+// This function builds the list of items in the trade menu, it runs on both units.
+// We let the game build the list as normal, then run through all the items to check
+// if their weight is greater or equal to the player's strength, and well as if
+// the item is equipped.  If either of those two conditions are true, the menu item is
+// disabled.
 #[unity::hook("App", "SortieTradeItemMenu", "CreateMenuItemList")]
 pub fn sortietradeitemmenuitem_createmenuitemlist(unit: &Unit, receiver_unit: &Unit, default_select: i32, _method_info: OptionalMethod) -> &'static mut List<SortieTradeItemMenuItem> {
     let item_list = call_original!(unit, receiver_unit, default_select, _method_info);
-
     if unit.force.unwrap().force_type != ForceType::Player as i32 {
         // Check if the command we're processing is Steal
         if get_instance::<MapTarget>().m_mind == 0x37 {
@@ -240,6 +229,12 @@ pub fn sortietradeitemmenuitem_createmenuitemlist(unit: &Unit, receiver_unit: &U
     item_list
 }
 
+// This function is... interesting.  It essentially builds a BIG list of labels and functions to run.
+// The labels are a way for the game to jump around the list and then run a series of functions in a row.
+// This is essentially how the ENTIRE game functions to some degree.
+// What we're doing here is adding a new section of entries to the list specifically for the Steal command.
+// We insert the new function calls and labels in reverse order because adding something to an existing index
+// pushes whatever was already there forward, and also makes later additions simpler.
 // Ray: I do not see.
 #[skyline::hook(offset = 0x2677780)]
 pub fn mapsequencehuman_createbind(sup: &mut MapSequence, is_resume: bool, _method_info: OptionalMethod) {
@@ -277,9 +272,11 @@ pub fn mapsequencehuman_createbind(sup: &mut MapSequence, is_resume: bool, _meth
     unsafe { (*sup.child).descs = new_descs };
 }
 
-
-// Redo this shit later to be not jank.  (This is what the patched addresses are for.)
+ 
 // Make the Trade preview window show up when highlighting an enemy with Steal, instead of the battle preview.
+// (This is what the patched addresses are for.)
+// This function is responsible for the windows that pop up when you highlight a target.
+// The default behavior without this hook makes the battle forecast appear.  So weapons, hp, etc.
 #[unity::hook("App", "MapBattleInfoParamSetter", "SetBattleInfo")]
 pub fn mapbattleinfoparamsetter_setbattleinfo(this: &mut MapBattleInfoParamSetter, side_type: i32, show_window: bool, battle_info: &(), scene_list: &(), _method_info: OptionalMethod) {
     call_original!(this, side_type, show_window, battle_info, scene_list, _method_info);
@@ -290,12 +287,15 @@ pub fn mapbattleinfoparamsetter_setbattleinfo(this: &mut MapBattleInfoParamSette
 
     if cur_mind == 0x37 {
         this.set_battle_info_for_trade();
-    } else if cur_mind > 0x36 {
+    }
+    else if cur_mind > 0x36 {
         this.set_battle_info_for_no_param(false, true);
     }
 }
 
-//M ake "Steal" appear on the preview when highlighting an enemy to steal from
+// Make "Steal" appear on the preview when highlighting an enemy to steal from.
+// This function is what sets the text that appears in between the two windows
+// when highlighting an enemy.
 #[unity::hook("App", "MapBattleInfoRoot", "SetCommandText")]
 pub fn mapbattleinforoot_setcommandtext(this: &mut MapBattleInfoRoot, mind_type: i32, _method_info: OptionalMethod) {
     if mind_type != 0x37 {
@@ -305,6 +305,8 @@ pub fn mapbattleinforoot_setcommandtext(this: &mut MapBattleInfoRoot, mind_type:
     }
 }
 
+// This is the function that usually runs when you press A while highlighting a target and the
+// forecast windows are up.
 #[unity::hook("App", "MapSequenceTargetSelect", "DecideNormal")]
 pub fn mapsequencetargetselect_decide_normal(this: &mut MapSequenceTargetSelect, _method_info: OptionalMethod) {
     let maptarget_instance = get_instance::<MapTarget>();
@@ -324,6 +326,7 @@ pub fn mapsequencetargetselect_decide_normal(this: &mut MapSequenceTargetSelect,
         
         let mapsequencehuman_instance = get_singleton_proc_instance::<MapSequenceHuman>().unwrap();
         
+        // This is using the new label added in the mapsequencehuman_createbind.
         ProcInst::jump(mapsequencehuman_instance, 0x35);
 
         GameSound::post_event("Decide", None);
@@ -333,6 +336,10 @@ pub fn mapsequencetargetselect_decide_normal(this: &mut MapSequenceTargetSelect,
 }
 
 
+// This is a generic function that essentially checks the Mind value, and then calls
+// a more specialized Enumerate function based on the result.
+// Enumerate functions are used for checking if there is a valid target in range,
+// and making a list of them.
 #[unity::hook("App", "MapTarget", "Enumerate")]
 pub fn maptarget_enumerate(this: &mut MapTarget, mask: i32, _method_info: OptionalMethod) {
     if this.m_mind < 0x37 {
@@ -365,14 +372,15 @@ pub fn maptarget_enumerate(this: &mut MapTarget, mask: i32, _method_info: Option
                 });
         }
     }
+
 }
 
-// Create our new menu command for Steal
+// Create our new menu command for Steal.
 #[unity::hook("App", "MapBasicMenu", ".ctor")]
 pub fn mapbasicmenu_ctor(this: &(), menu_item_list: &mut List<TradeMenuItem>, menucontent: &BasicMenuContent, _method_info: OptionalMethod) {
     // Create a new class using TradeMenuItem as reference so that we do not wreck the original command for ours.
     let steal = STEAL_CLASS.get_or_init(|| {
-        // TrdeMenuItem is a nested class inside of MapUnitCommandMenu, so we need to dig for it.
+        // TradeMenuItem is a nested class inside of MapUnitCommandMenu, so we need to dig for it.
         let menu_class  = *MapUnitCommandMenu::class()
             .get_nested_types()
             .iter()
@@ -402,7 +410,7 @@ pub fn mapbasicmenu_ctor(this: &(), menu_item_list: &mut List<TradeMenuItem>, me
     // Instantiate our custom class as if it was TradeMenuItem
     let instance = Il2CppObject::<TradeMenuItem>::from_class(steal).unwrap();
 
-    menu_item_list.add(instance);
+    menu_item_list.insert((menu_item_list.len() - 1) as i32, instance);
 
     call_original!(this, menu_item_list, menucontent, _method_info);
 }
@@ -464,9 +472,14 @@ pub fn main() {
         mapbattleinfoparamsetter_setbattleinfo,
         mapsequencehuman_createbind,
         sortietradeitemmenuitem_createmenuitemlist,
-        battleinfoside_calcbattletimesimpl,
+        mapbattleinforoot_setup,
+        sortiesequencetrade_open,
     );
 
+    // Removes a forced jump to the default "Battle Forecast Window" code so that Steal doesn't use that.
     skyline::patching::Patch::in_text(0x01f041ac).bytes(&[0x1f, 0x20, 0x03, 0xd5]).expect("Couldn’t patch that shit for some reasons");
+    // Removes a function call for the "No Param Window" that Steal would normally run into after bypassing
+    // the previous forced jump.  We reimplemented this function call in our hook afterwards, so there should
+    // be no issues.
     skyline::patching::Patch::in_text(0x01f0423c).bytes(&[0x1f, 0x20, 0x03, 0xd5]).expect("Couldn’t patch that shit for some reasons");
 }
