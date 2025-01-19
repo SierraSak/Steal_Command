@@ -16,6 +16,14 @@ pub trait StealMapTargetEnumerator {
 }
 
 impl StealMapTargetEnumerator for MapTarget {
+  
+  // The nightmare function that probably took up most of this project.
+  // This function runs through all of the valid spaces around the player
+  // unit, within a certain range, then checks any other units found on
+  // those spaces.  If they are found to be a valid target, they are added
+  // to a list of targets.  If not, it continues looking at the spaces.
+  // If there are no valid targets, the steal option does not even appear
+  // in the menu.  
   fn enumerate_steal(&mut self) {
     let mut local_c0 = RangeEnumerator::default();
   
@@ -35,6 +43,10 @@ impl StealMapTargetEnumerator for MapTarget {
   
     if (cur_unit.extra_hp_stock_count + cur_unit.hp_stock_count == 0) && (cur_unit.hp_value == 0) {
       println!("self.unit's HP is funky");
+      return;
+    }
+
+    if !cur_unit.has_sid("SID_Steal".into()) {
       return;
     }
   
@@ -146,8 +158,13 @@ impl StealMapTargetEnumerator for MapTarget {
           if ((mapimage_instance.playarea_z2 - target.z as i32) * (target.z as i32 - mapimage_instance.playarea_z1)) | ((mapimage_instance.playarea_x2 - target.x as i32) * (target.x as i32 - mapimage_instance.playarea_x1)) < 0 {
             continue;
           }
-
           println!("Target is within playable bounds");
+
+          // Check that player has more speed than target
+          if (target.get_capability(3, true) as u8) >= (cur_unit.get_capability(3, true) as u8) {
+            continue;
+          }
+
 
           // Get the index of the TerrainData where the target is standing
           let terrain_idx = core_get(mapimage_instance.terrain.m_result, ((target.x as i32) + ((target.z as i32) << 5)).into());
