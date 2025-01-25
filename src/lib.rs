@@ -15,28 +15,6 @@ use engage::{
 mod enume;
 use enume::StealMapTargetEnumerator;
 
-#[unity::class("App", "MapBasicMenu")]
-pub struct MapBasicMenu {
-    sup: BasicMenuFields<TradeMenuItem>,
-}
-
-#[unity::class("App", "MapUnitCommandMenu")]
-pub struct MapUnitCommandMenu2 {
-    sup: MapBasicMenuFields,
-}
-
-impl AsRef<engage::proc::ProcInstFields> for MapUnitCommandMenu2 {
-    fn as_ref(&self) -> &engage::proc::ProcInstFields {
-        &self.sup.sup.proc
-    }
-}
-
-impl AsMut<engage::proc::ProcInstFields> for MapUnitCommandMenu2 {
-    fn as_mut(&mut self) -> &mut engage::proc::ProcInstFields {
-        &mut self.sup.sup.proc
-    }
-}
-
 #[unity::class("App", "MapBattleInfoRoot")]
 pub struct MapBattleInfoRoot {
     sup: [u8;0x10],
