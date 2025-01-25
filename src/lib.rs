@@ -396,54 +396,54 @@ pub fn maptarget_enumerate(this: &mut MapTarget, mask: i32, _method_info: Option
 }
 
 // Create our new menu command for Steal.
-#[unity::hook("App", "MapBasicMenu", ".ctor")]
-pub fn mapbasicmenu_ctor(this: &(), menu_item_list: &mut List<TradeMenuItem>, menucontent: &BasicMenuContent, _method_info: OptionalMethod) {
+#[unity::hook("App", "MapUnitCommandMenu", "CreateBind")]
+pub fn mapunitcommandmenu_createbind(sup: &mut ProcInst, _method_info: OptionalMethod) {
     let maptarget_instance = get_instance::<MapTarget>();
-
     let cur_mind = maptarget_instance.m_mind;
-    if menu_item_list.first().unwrap().get_class().get_name() == "BreakdownMenuItem" {
-        // Create a new class using TradeMenuItem as reference so that we do not wreck the original command for ours.
-        let steal = STEAL_CLASS.get_or_init(|| {
-            // TradeMenuItem is a nested class inside of MapUnitCommandMenu, so we need to dig for it.
-            let menu_class  = *MapUnitCommandMenu::class()
-                .get_nested_types()
-                .iter()
-                .find(|class| class.get_name().contains("TradeMenuItem"))
-                .unwrap();
-            
-            let new_class = menu_class.clone();
 
-            new_class
-                .get_virtual_method_mut("GetName")
-                .map(|method| method.method_ptr = steal_get_name as _)
-                .unwrap();
+    // Create a new class using TradeMenuItem as reference so that we do not wreck the original command for ours.
+    let steal = STEAL_CLASS.get_or_init(|| {
+        // TradeMenuItem is a nested class inside of MapUnitCommandMenu, so we need to dig for it.
+        let menu_class  = *MapUnitCommandMenu::class()
+            .get_nested_types()
+            .iter()
+            .find(|class| class.get_name().contains("TradeMenuItem"))
+            .unwrap();
+        
+        let new_class = menu_class.clone();
 
-            new_class
-                .get_virtual_method_mut("GetCommandHelp")
-                .map(|method| method.method_ptr = steal_get_desc as _)
-                .unwrap();
+        new_class
+            .get_virtual_method_mut("GetName")
+            .map(|method| method.method_ptr = steal_get_name as _)
+            .unwrap();
 
-            new_class
-                .get_virtual_method_mut("get_Mind")
-                .map(|method| method.method_ptr = steal_get_mind as _)
-                .unwrap();
+        new_class
+            .get_virtual_method_mut("GetCommandHelp")
+            .map(|method| method.method_ptr = steal_get_desc as _)
+            .unwrap();
 
-                new_class
-                .get_virtual_method_mut("get_FlagID")
-                .map(|method| method.method_ptr = steal_get_flagid as _)
-                .unwrap();
+        new_class
+            .get_virtual_method_mut("get_Mind")
+            .map(|method| method.method_ptr = steal_get_mind as _)
+            .unwrap();
 
-            new_class
-        });
+        new_class
+            .get_virtual_method_mut("get_FlagID")
+            .map(|method| method.method_ptr = steal_get_flagid as _)
+            .unwrap();
 
-        // Instantiate our custom class as if it was TradeMenuItem
-        let instance = Il2CppObject::<TradeMenuItem>::from_class(steal).unwrap();
+        new_class
+    });
 
-        menu_item_list.insert((menu_item_list.len() - 1) as i32, instance);
-    }
+    call_original!(sup, _method_info);
+
+    // Instantiate our custom class as if it was TradeMenuItem
+    let instance = Il2CppObject::<TradeMenuItem>::from_class(steal).unwrap();
+
+    let menu_item_list = &mut sup.child.as_mut().unwrap().cast_mut::<BasicMenu<TradeMenuItem>>().full_menu_item_list;
+    menu_item_list.insert((menu_item_list.len() - 1) as i32, instance);
     
 
-    call_original!(this, menu_item_list, menucontent, _method_info);
 }
 
 pub extern "C" fn steal_get_name(_this: &(), _method_info: OptionalMethod) -> &'static Il2CppString {
@@ -500,7 +500,7 @@ pub fn main() {
     }));
 
     skyline::install_hooks!(
-        mapbasicmenu_ctor,
+        mapunitcommandmenu_createbind,
         maptarget_enumerate,
         mapsequencetargetselect_decide_normal,
         mapbattleinforoot_setcommandtext,
