@@ -15,6 +15,28 @@ use engage::{
 mod enume;
 use enume::StealMapTargetEnumerator;
 
+#[unity::class("App", "MapBasicMenu")]
+pub struct MapBasicMenu {
+    sup: BasicMenuFields<TradeMenuItem>,
+}
+
+#[unity::class("App", "MapUnitCommandMenu")]
+pub struct MapUnitCommandMenu2 {
+    sup: MapBasicMenuFields,
+}
+
+impl AsRef<engage::proc::ProcInstFields> for MapUnitCommandMenu2 {
+    fn as_ref(&self) -> &engage::proc::ProcInstFields {
+        &self.sup.sup.proc
+    }
+}
+
+impl AsMut<engage::proc::ProcInstFields> for MapUnitCommandMenu2 {
+    fn as_mut(&mut self) -> &mut engage::proc::ProcInstFields {
+        &mut self.sup.sup.proc
+    }
+}
+
 #[unity::class("App", "MapBattleInfoRoot")]
 pub struct MapBattleInfoRoot {
     sup: [u8;0x10],
@@ -183,7 +205,7 @@ static STEAL_CLASS: OnceLock<&'static mut Il2CppClass> = OnceLock::new();
 pub fn sortiesequencetrade_open(this: &(), _method_info: OptionalMethod) {
     call_original!(this, _method_info);
 
-    if get_instance::<MapTarget>().m_mind == 0x37 {
+    if get_instance::<MapTarget>().m_mind == 0x38 {
         TitleBar::open_header("Steal", "Take items from an enemy", "");    
     }
     return
@@ -196,9 +218,10 @@ pub fn sortiesequencetrade_open(this: &(), _method_info: OptionalMethod) {
 // to return false, since that's what hides the damage arrows.
 #[unity::hook("App", "MapBattleInfoRoot", "Setup")]
 pub fn mapbattleinforoot_setup(this: &(), mindtype: i32, skill: &SkillData, info: &(), scene_list: &(), _method_info: OptionalMethod) -> bool {
+  
     let mut result = call_original!(this, mindtype, skill, info, scene_list, _method_info);
 
-    if mindtype == 0x37 {
+    if mindtype == 0x38 {
         result = false;
     }
 
@@ -216,7 +239,7 @@ pub fn sortietradeitemmenuitem_createmenuitemlist(unit: &Unit, receiver_unit: &U
     let item_list = call_original!(unit, receiver_unit, default_select, _method_info);
     if unit.force.unwrap().force_type != ForceType::Player as i32 {
         // Check if the command we're processing is Steal
-        if get_instance::<MapTarget>().m_mind == 0x37 {
+        if get_instance::<MapTarget>().m_mind == 0x38 {
             item_list.iter_mut().zip(unit.item_list.fields.unit_items.iter()).for_each(|(menu_item, unit_item)| {
                 menu_item.disabled = unit_item.as_ref()
                     .map(|current_item| current_item.is_equip() || current_item.item.weight > receiver_unit.get_capability(1, true) as u8)
@@ -274,7 +297,6 @@ pub fn mapsequencehuman_createbind(sup: &mut MapSequence, is_resume: bool, _meth
 
  
 // Make the Trade preview window show up when highlighting an enemy with Steal, instead of the battle preview.
-// (This is what the patched addresses are for.)
 // This function is responsible for the windows that pop up when you highlight a target.
 // The default behavior without this hook makes the battle forecast appear.  So weapons, hp, etc.
 #[unity::hook("App", "MapBattleInfoParamSetter", "SetBattleInfo")]
@@ -285,11 +307,8 @@ pub fn mapbattleinfoparamsetter_setbattleinfo(this: &mut MapBattleInfoParamSette
 
     let cur_mind = maptarget_instance.m_mind;
 
-    if cur_mind == 0x37 {
+    if cur_mind == 0x38 {
         this.set_battle_info_for_trade();
-    }
-    else if cur_mind > 0x36 {
-        this.set_battle_info_for_no_param(false, true);
     }
 }
 
@@ -298,7 +317,7 @@ pub fn mapbattleinfoparamsetter_setbattleinfo(this: &mut MapBattleInfoParamSette
 // when highlighting an enemy.
 #[unity::hook("App", "MapBattleInfoRoot", "SetCommandText")]
 pub fn mapbattleinforoot_setcommandtext(this: &mut MapBattleInfoRoot, mind_type: i32, _method_info: OptionalMethod) {
-    if mind_type != 0x37 {
+    if mind_type != 0x38 {
         call_original!(this, mind_type, _method_info);
     } else {
         InfoUtil::try_set_text(&this.command_text, "Steal");
@@ -313,7 +332,7 @@ pub fn mapsequencetargetselect_decide_normal(this: &mut MapSequenceTargetSelect,
 
     let cur_mind = maptarget_instance.m_mind;
 
-    if cur_mind == 0x37 {
+    if cur_mind == 0x38 {
         let mapmind_instance = get_instance::<MapMind>();
 
         let mut unit_index = 7;
@@ -342,7 +361,8 @@ pub fn mapsequencetargetselect_decide_normal(this: &mut MapSequenceTargetSelect,
 // and making a list of them.
 #[unity::hook("App", "MapTarget", "Enumerate")]
 pub fn maptarget_enumerate(this: &mut MapTarget, mask: i32, _method_info: OptionalMethod) {
-    if this.m_mind < 0x37 {
+    
+    if this.m_mind < 0x38 {
         call_original!(this, mask, _method_info);
     } else {
         this.m_action_mask = mask as u32;
@@ -378,44 +398,50 @@ pub fn maptarget_enumerate(this: &mut MapTarget, mask: i32, _method_info: Option
 // Create our new menu command for Steal.
 #[unity::hook("App", "MapBasicMenu", ".ctor")]
 pub fn mapbasicmenu_ctor(this: &(), menu_item_list: &mut List<TradeMenuItem>, menucontent: &BasicMenuContent, _method_info: OptionalMethod) {
-    // Create a new class using TradeMenuItem as reference so that we do not wreck the original command for ours.
-    let steal = STEAL_CLASS.get_or_init(|| {
-        // TradeMenuItem is a nested class inside of MapUnitCommandMenu, so we need to dig for it.
-        let menu_class  = *MapUnitCommandMenu::class()
-            .get_nested_types()
-            .iter()
-            .find(|class| class.get_name().contains("TradeMenuItem"))
-            .unwrap();
-        
-        let new_class = menu_class.clone();
+    let maptarget_instance = get_instance::<MapTarget>();
 
-        new_class
-            .get_virtual_method_mut("GetName")
-            .map(|method| method.method_ptr = steal_get_name as _)
-            .unwrap();
-
-        new_class
-            .get_virtual_method_mut("GetCommandHelp")
-            .map(|method| method.method_ptr = steal_get_desc as _)
-            .unwrap();
-
-        new_class
-            .get_virtual_method_mut("get_Mind")
-            .map(|method| method.method_ptr = steal_get_mind as _)
-            .unwrap();
+    let cur_mind = maptarget_instance.m_mind;
+    if menu_item_list.first().unwrap().get_class().get_name() == "BreakdownMenuItem" {
+        // Create a new class using TradeMenuItem as reference so that we do not wreck the original command for ours.
+        let steal = STEAL_CLASS.get_or_init(|| {
+            // TradeMenuItem is a nested class inside of MapUnitCommandMenu, so we need to dig for it.
+            let menu_class  = *MapUnitCommandMenu::class()
+                .get_nested_types()
+                .iter()
+                .find(|class| class.get_name().contains("TradeMenuItem"))
+                .unwrap();
+            
+            let new_class = menu_class.clone();
 
             new_class
-            .get_virtual_method_mut("get_FlagID")
-            .map(|method| method.method_ptr = steal_get_flagid as _)
-            .unwrap();
+                .get_virtual_method_mut("GetName")
+                .map(|method| method.method_ptr = steal_get_name as _)
+                .unwrap();
 
-        new_class
-    });
+            new_class
+                .get_virtual_method_mut("GetCommandHelp")
+                .map(|method| method.method_ptr = steal_get_desc as _)
+                .unwrap();
 
-    // Instantiate our custom class as if it was TradeMenuItem
-    let instance = Il2CppObject::<TradeMenuItem>::from_class(steal).unwrap();
+            new_class
+                .get_virtual_method_mut("get_Mind")
+                .map(|method| method.method_ptr = steal_get_mind as _)
+                .unwrap();
 
-    menu_item_list.insert((menu_item_list.len() - 1) as i32, instance);
+                new_class
+                .get_virtual_method_mut("get_FlagID")
+                .map(|method| method.method_ptr = steal_get_flagid as _)
+                .unwrap();
+
+            new_class
+        });
+
+        // Instantiate our custom class as if it was TradeMenuItem
+        let instance = Il2CppObject::<TradeMenuItem>::from_class(steal).unwrap();
+
+        menu_item_list.insert((menu_item_list.len() - 1) as i32, instance);
+    }
+    
 
     call_original!(this, menu_item_list, menucontent, _method_info);
 }
@@ -429,7 +455,7 @@ pub extern "C" fn steal_get_desc(_this: &(), _method_info: OptionalMethod) -> &'
 }
 
 pub extern "C" fn steal_get_mind(_this: &(), _method_info: OptionalMethod) -> i32 {
-    0x37
+    0x38
 }
 
 pub extern "C" fn steal_get_flagid(_this: &(), _method_info: OptionalMethod) -> &'static Il2CppString {
@@ -484,11 +510,4 @@ pub fn main() {
         mapbattleinforoot_setup,
         sortiesequencetrade_open,
     );
-
-    // Removes a forced jump to the default "Battle Forecast Window" code so that Steal doesn't use that.
-    skyline::patching::Patch::in_text(0x01f041ac).bytes(&[0x1f, 0x20, 0x03, 0xd5]).expect("Couldn’t patch that shit for some reasons");
-    // Removes a function call for the "No Param Window" that Steal would normally run into after bypassing
-    // the previous forced jump.  We reimplemented this function call in our hook afterwards, so there should
-    // be no issues.
-    skyline::patching::Patch::in_text(0x01f0423c).bytes(&[0x1f, 0x20, 0x03, 0xd5]).expect("Couldn’t patch that shit for some reasons");
 }
