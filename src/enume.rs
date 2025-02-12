@@ -17,7 +17,6 @@ pub trait StealMapTargetEnumerator {
 
 impl StealMapTargetEnumerator for MapTarget {
   
-  // The nightmare function that probably took up most of this project.
   // This function runs through all of the valid spaces around the player
   // unit, within a certain range, then checks any other units found on
   // those spaces.  If they are found to be a valid target, they are added
