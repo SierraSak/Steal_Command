@@ -175,10 +175,7 @@ static STEAL_CLASS: OnceLock<&'static mut Il2CppClass> = OnceLock::new();
 
 // Change the header text.
 // This function is for creating the Header bar ar the top of the screen while the
-// Steal/Trade menus are open.  In truth, this particular hook is a bit of a cheat,
-// as I am allowing the game to open and create the normal 'Trade' header, and then
-// replacing it with the Steal text.  In testing, this hasn't caused any issues.
-// But inform one of us if you spot any oddities here.
+// Steal/Trade menus are open.
 #[unity::hook("App", "SortieSequenceTrade", "Open")]
 pub fn sortiesequencetrade_open(this: &(), _method_info: OptionalMethod) {
     call_original!(this, _method_info);
@@ -209,7 +206,7 @@ pub fn mapbattleinforoot_setup(this: &(), mindtype: i32, skill: &SkillData, info
 // Make some weapons un-stealable
 // This function builds the list of items in the trade menu, it runs on both units.
 // We let the game build the list as normal, then run through all the items to check
-// if their weight is greater or equal to the player's strength, and well as if
+// if their weight is greater or equal to the player's strength, as well as if
 // the item is equipped.  If either of those two conditions are true, the menu item is
 // disabled.
 #[unity::hook("App", "SortieTradeItemMenu", "CreateMenuItemList")]
@@ -236,7 +233,6 @@ pub fn sortietradeitemmenuitem_createmenuitemlist(unit: &Unit, receiver_unit: &U
 // What we're doing here is adding a new section of entries to the list specifically for the Steal command.
 // We insert the new function calls and labels in reverse order because adding something to an existing index
 // pushes whatever was already there forward, and also makes later additions simpler.
-// Ray: I do not see.
 #[skyline::hook(offset = 0x2677780)]
 pub fn mapsequencehuman_createbind(sup: &mut MapSequence, is_resume: bool, _method_info: OptionalMethod) {
     call_original!(sup, is_resume, _method_info);
