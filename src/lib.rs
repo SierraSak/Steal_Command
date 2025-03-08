@@ -175,9 +175,12 @@ static STEAL_CLASS: OnceLock<&'static mut Il2CppClass> = OnceLock::new();
 
 // Change the header text.
 // This function is for creating the Header bar ar the top of the screen while the
-// Steal/Trade menus are open.
+// Steal/Trade menus are open.  In truth, this particular hook is a bit of a cheat,
+// as I am allowing the game to open and create the normal 'Trade' header, and then
+// replacing it with the Steal text.  In testing, this hasn't caused any issues.
+// But inform one of us if you spot any oddities here.
 #[unity::hook("App", "SortieSequenceTrade", "Open")]
-pub fn sortiesequencetrade_open(this: &(), _method_info: OptionalMethod) {
+pub fn sortiesequencetrade_open_steal(this: &(), _method_info: OptionalMethod) {
     call_original!(this, _method_info);
 
     if get_instance::<MapTarget>().m_mind == 0x38 {
@@ -192,7 +195,7 @@ pub fn sortiesequencetrade_open(this: &(), _method_info: OptionalMethod) {
 // Thankfully, the default behavior is almost exactly what we want, we just need to adjust it
 // to return false, since that's what hides the damage arrows.
 #[unity::hook("App", "MapBattleInfoRoot", "Setup")]
-pub fn mapbattleinforoot_setup(this: &(), mindtype: i32, skill: &SkillData, info: &(), scene_list: &(), _method_info: OptionalMethod) -> bool {
+pub fn mapbattleinforoot_setup_steal(this: &(), mindtype: i32, skill: &SkillData, info: &(), scene_list: &(), _method_info: OptionalMethod) -> bool {
   
     let mut result = call_original!(this, mindtype, skill, info, scene_list, _method_info);
 
@@ -206,11 +209,11 @@ pub fn mapbattleinforoot_setup(this: &(), mindtype: i32, skill: &SkillData, info
 // Make some weapons un-stealable
 // This function builds the list of items in the trade menu, it runs on both units.
 // We let the game build the list as normal, then run through all the items to check
-// if their weight is greater or equal to the player's strength, as well as if
+// if their weight is greater or equal to the player's strength, and well as if
 // the item is equipped.  If either of those two conditions are true, the menu item is
 // disabled.
 #[unity::hook("App", "SortieTradeItemMenu", "CreateMenuItemList")]
-pub fn sortietradeitemmenuitem_createmenuitemlist(unit: &Unit, receiver_unit: &Unit, default_select: i32, _method_info: OptionalMethod) -> &'static mut List<SortieTradeItemMenuItem> {
+pub fn sortietradeitemmenuitem_createmenuitemlist_steal(unit: &Unit, receiver_unit: &Unit, default_select: i32, _method_info: OptionalMethod) -> &'static mut List<SortieTradeItemMenuItem> {
     let item_list = call_original!(unit, receiver_unit, default_select, _method_info);
     if unit.force.unwrap().force_type != ForceType::Player as i32 {
         // Check if the command we're processing is Steal
@@ -233,8 +236,9 @@ pub fn sortietradeitemmenuitem_createmenuitemlist(unit: &Unit, receiver_unit: &U
 // What we're doing here is adding a new section of entries to the list specifically for the Steal command.
 // We insert the new function calls and labels in reverse order because adding something to an existing index
 // pushes whatever was already there forward, and also makes later additions simpler.
+// Ray: I do not see.
 #[skyline::hook(offset = 0x2677780)]
-pub fn mapsequencehuman_createbind(sup: &mut MapSequence, is_resume: bool, _method_info: OptionalMethod) {
+pub fn mapsequencehuman_createbind_steal(sup: &mut MapSequence, is_resume: bool, _method_info: OptionalMethod) {
     call_original!(sup, is_resume, _method_info);
 
     let mut vec = unsafe { (*(sup.child)).descs.to_vec() };
@@ -274,7 +278,7 @@ pub fn mapsequencehuman_createbind(sup: &mut MapSequence, is_resume: bool, _meth
 // This function is responsible for the windows that pop up when you highlight a target.
 // The default behavior without this hook makes the battle forecast appear.  So weapons, hp, etc.
 #[unity::hook("App", "MapBattleInfoParamSetter", "SetBattleInfo")]
-pub fn mapbattleinfoparamsetter_setbattleinfo(this: &mut MapBattleInfoParamSetter, side_type: i32, show_window: bool, battle_info: &(), scene_list: &(), _method_info: OptionalMethod) {
+pub fn mapbattleinfoparamsetter_setbattleinfo_steal(this: &mut MapBattleInfoParamSetter, side_type: i32, show_window: bool, battle_info: &(), scene_list: &(), _method_info: OptionalMethod) {
     call_original!(this, side_type, show_window, battle_info, scene_list, _method_info);
 
     let maptarget_instance = get_instance::<MapTarget>();
@@ -290,18 +294,19 @@ pub fn mapbattleinfoparamsetter_setbattleinfo(this: &mut MapBattleInfoParamSette
 // This function is what sets the text that appears in between the two windows
 // when highlighting an enemy.
 #[unity::hook("App", "MapBattleInfoRoot", "SetCommandText")]
-pub fn mapbattleinforoot_setcommandtext(this: &mut MapBattleInfoRoot, mind_type: i32, _method_info: OptionalMethod) {
-    if mind_type != 0x38 {
-        call_original!(this, mind_type, _method_info);
-    } else {
+pub fn mapbattleinforoot_setcommandtext_steal(this: &mut MapBattleInfoRoot, mind_type: i32, _method_info: OptionalMethod) {
+    if mind_type == 0x38 {
         InfoUtil::try_set_text(&this.command_text, "Steal");
+    } else {
+        call_original!(this, mind_type, _method_info);
+        
     }
 }
 
 // This is the function that usually runs when you press A while highlighting a target and the
 // forecast windows are up.
 #[unity::hook("App", "MapSequenceTargetSelect", "DecideNormal")]
-pub fn mapsequencetargetselect_decide_normal(this: &mut MapSequenceTargetSelect, _method_info: OptionalMethod) {
+pub fn mapsequencetargetselect_decide_normal_steal(this: &mut MapSequenceTargetSelect, _method_info: OptionalMethod) {
     let maptarget_instance = get_instance::<MapTarget>();
 
     let cur_mind = maptarget_instance.m_mind;
@@ -334,11 +339,9 @@ pub fn mapsequencetargetselect_decide_normal(this: &mut MapSequenceTargetSelect,
 // Enumerate functions are used for checking if there is a valid target in range,
 // and making a list of them.
 #[unity::hook("App", "MapTarget", "Enumerate")]
-pub fn maptarget_enumerate(this: &mut MapTarget, mask: i32, _method_info: OptionalMethod) {
+pub fn maptarget_enumerate_steal(this: &mut MapTarget, mask: i32, _method_info: OptionalMethod) {
     
-    if this.m_mind < 0x38 {
-        call_original!(this, mask, _method_info);
-    } else {
+    if this.m_mind == 0x38 {
         this.m_action_mask = mask as u32;
 
         if let Some(unit) = this.unit {
@@ -366,12 +369,15 @@ pub fn maptarget_enumerate(this: &mut MapTarget, mask: i32, _method_info: Option
                 });
         }
     }
+    else {
+        call_original!(this, mask, _method_info);
+    }
 
 }
 
 // Create our new menu command for Steal.
 #[unity::hook("App", "MapUnitCommandMenu", "CreateBind")]
-pub fn mapunitcommandmenu_createbind(sup: &mut ProcInst, _method_info: OptionalMethod) {
+pub fn mapunitcommandmenu_createbind_steal(sup: &mut ProcInst, _method_info: OptionalMethod) {
     let maptarget_instance = get_instance::<MapTarget>();
     let cur_mind = maptarget_instance.m_mind;
 
@@ -474,14 +480,14 @@ pub fn main() {
     }));
 
     skyline::install_hooks!(
-        mapunitcommandmenu_createbind,
-        maptarget_enumerate,
-        mapsequencetargetselect_decide_normal,
-        mapbattleinforoot_setcommandtext,
-        mapbattleinfoparamsetter_setbattleinfo,
-        mapsequencehuman_createbind,
-        sortietradeitemmenuitem_createmenuitemlist,
-        mapbattleinforoot_setup,
-        sortiesequencetrade_open,
+        mapunitcommandmenu_createbind_steal,
+        maptarget_enumerate_steal,
+        mapsequencetargetselect_decide_normal_steal,
+        mapbattleinforoot_setcommandtext_steal,
+        mapbattleinfoparamsetter_setbattleinfo_steal,
+        mapsequencehuman_createbind_steal,
+        sortietradeitemmenuitem_createmenuitemlist_steal,
+        mapbattleinforoot_setup_steal,
+        sortiesequencetrade_open_steal,
     );
 }
